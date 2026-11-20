@@ -2,7 +2,7 @@ import { availableActions, routingActions, transitions } from './rules.js';
 import { requireValue } from './validation.js';
 
 const technicalEvents = ['diagnose', 'startDiagnosis', 'diagnosisReport', 'assign', 'moveBay', 'park',
-  'startRepair', 'pause', 'resume', 'repairReport', 'rework', 'release', 'dispatchTransfer', 'cancelTransfer', 'completeTransfer'].map(key => transitions[key][2]);
+  'startRepair', 'pause', 'resume', 'repairReport', 'rework', 'release', 'dispatchTransfer', 'cancelTransfer', 'completeTransfer', 'ready', 'markPickupParking'].map(key => transitions[key][2]);
 technicalEvents.push('Внутреннее примечание о паузе', 'Комментарий проверки', 'Запчасти выданы со склада');
 const fullRequestAccess = role => role === 'advisor' || role === 'manager';
 const assignedTo = (user, row) => (row.transfer_mechanic_id ?? row.mechanic_id) === user.id && Boolean(row.bay_id || row.parking_space || row.status === 'paused');
@@ -11,7 +11,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
   const requestSelect = `SELECT r.id, r.vehicle_id, r.description, r.priority, r.preferred_date, r.appointment,
     r.status AS request_status, r.created_at, v.model, v.plate, v.vin, v.mileage, v.client_id,
     c.name AS client_name, c.phone AS client_phone, o.id AS order_id, o.status AS work_status,
-    CASE WHEN t.id IS NOT NULL THEN 'transfer_pending' WHEN p.space_id IS NOT NULL AND ep.order_id IS NULL THEN 'waiting_parts'
+    CASE WHEN pickup.order_id IS NOT NULL THEN 'pickup_pending' WHEN t.id IS NOT NULL THEN 'transfer_pending' WHEN p.space_id IS NOT NULL AND ep.order_id IS NULL THEN 'waiting_parts'
       ELSE COALESCE(o.status,r.status) END AS status,
     t.id AS transfer_id,t.bay_id AS transfer_bay_id,tb.name AS transfer_bay_name,t.mechanic_id AS transfer_mechanic_id,
     tm.name AS transfer_mechanic_name,t.instructions AS transfer_instructions,
@@ -25,6 +25,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     FROM service_requests r JOIN vehicles v ON v.id=r.vehicle_id JOIN accounts c ON c.id=v.client_id
     LEFT JOIN orders o ON o.request_id=r.id LEFT JOIN accounts m ON m.id=o.mechanic_id
     LEFT JOIN bays b ON b.id=o.bay_id LEFT JOIN parking_assignments p ON p.order_id=o.id
+    LEFT JOIN pickup_parking_tasks pickup ON pickup.order_id=o.id
     LEFT JOIN estimate_parking ep ON ep.order_id=o.id
     LEFT JOIN parking_transfers t ON t.order_id=o.id LEFT JOIN bays tb ON tb.id=t.bay_id
     LEFT JOIN accounts tm ON tm.id=t.mechanic_id LEFT JOIN arrival_parking arrival ON arrival.request_id=r.id`;
@@ -72,7 +73,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     return all(requestSelect + ' ' + restriction + ' ORDER BY r.id DESC', ...args).map(row => summary(user, row));
   }
 
-  const mapActionKeys = ['receive', 'diagnose', 'estimate', 'assign', 'ready', 'returnCar',
+  const mapActionKeys = ['receive', 'diagnose', 'estimate', 'assign', 'ready', 'returnCar', 'markPickupParking', 'payment', 'issue',
     'startDiagnosis', 'diagnosisReport', 'startRepair', 'pause', 'resume', 'repairReport'];
 
   function summary(user, row, money) {
@@ -80,9 +81,11 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     const mechanic = user.role === 'mechanic';
     const assigned = mechanic && assignedTo(user, row);
     const past = mechanic && !assigned;
+    const onMap = (user.role === 'advisor' || assigned) && (bay_id || parking_space || row.arrival_space || status === 'ready');
+    const financials = onMap ? money ?? amounts(row) : null;
     return { id, model, plate, status, priority, appointment: mechanic ? null : appointment, created_at,
       eta: past ? null : eta, parking_space: past ? null : parking_space,
-      ...(!mechanic ? { arrival_space: row.arrival_space } : {}),
+      ...(!mechanic || status === 'ready' && row.mechanic_id === user.id ? { arrival_space: row.arrival_space } : {}),
       ...(user.role !== 'client' ? { bay_id: past ? null : bay_id } : {}),
       ...(mechanic ? { assigned_to_me: assigned } : {}),
       ...((fullRequestAccess(user.role) || assigned) && ['diagnosing', 'repairing', 'paused'].includes(status)
@@ -90,9 +93,9 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
       ...(fullRequestAccess(user.role) ? { client_name: row.client_name, mechanic_name: row.mechanic_name } : {}),
       ...(fullRequestAccess(user.role) && status === 'issued' ? { issued_at: get(`SELECT created_at FROM history
         WHERE request_id=? AND title=? ORDER BY id DESC LIMIT 1`, id, transitions.issue[2])?.created_at ?? null } : {}),
-      ...((user.role === 'advisor' || assigned) && (bay_id || parking_space || row.arrival_space)
-        ? { map_actions: availableActions(user, { ...row, ...(money ?? amounts(row)) }).filter(key => mapActionKeys.includes(key)) } : {}),
-      ...(fullRequestAccess(user.role) ? { routing_actions: routingActions(user.role, row) } : {}),
+      ...(financials ? { map_actions: availableActions(user, { ...row, ...financials }).filter(key => mapActionKeys.includes(key)),
+        ...(user.role === 'advisor' && status === 'ready' ? { payment_due: financials.total - financials.paid } : {}) } : {}),
+      ...(fullRequestAccess(user.role) || assigned ? { routing_actions: routingActions(user.role, row) } : {}),
       ...(row.transfer_id && (fullRequestAccess(user.role) || assigned) ? { transfer: {
         id: row.transfer_id, bay_id: row.transfer_bay_id, bay_name: row.transfer_bay_name,
         mechanic_id: row.transfer_mechanic_id, mechanic_name: row.transfer_mechanic_name,
@@ -184,10 +187,14 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
       if (user.role === 'stockkeeper') return result;
     }
 
-    const bays = all(`SELECT b.id, b.name, b.id AS number, o.status, o.request_id, o.mechanic_id, v.model, a.name AS mechanic,
+    result.occupied_arrivals = all('SELECT space_id FROM arrival_parking ORDER BY space_id').map(row => row.space_id);
+
+    const bays = all(`SELECT b.id, b.name, b.id AS number,
+      CASE WHEN pickup.order_id IS NOT NULL THEN 'pickup_pending' ELSE o.status END AS status, o.request_id, o.mechanic_id, v.model, a.name AS mechanic,
       t.mechanic_id AS reserved_mechanic_id,pending.request_id AS reserved_request_id
       FROM bays b LEFT JOIN orders o ON o.bay_id=b.id LEFT JOIN service_requests r ON r.id=o.request_id
       LEFT JOIN vehicles v ON r.vehicle_id=v.id LEFT JOIN accounts a ON a.id=o.mechanic_id
+      LEFT JOIN pickup_parking_tasks pickup ON pickup.order_id=o.id
       LEFT JOIN parking_transfers t ON t.bay_id=b.id LEFT JOIN orders pending ON pending.id=t.order_id ORDER BY b.id`);
     const parking = all(`SELECT s.id, o.request_id, COALESCE(t.mechanic_id,o.mechanic_id) AS mechanic_id, v.model, v.plate, p.expected_date
       FROM parking_spaces s LEFT JOIN parking_assignments p ON p.space_id=s.id

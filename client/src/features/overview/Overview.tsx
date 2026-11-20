@@ -12,7 +12,9 @@ function needsWorkshopAssignment(row: RequestSummary) {
   return row.status === 'received' || row.status === 'approved' || (row.status === 'paused' && !row.bay_id)
 }
 
-function AdvisorRequests({ requests, onOpen }: { requests: RequestSummary[]; onOpen: OpenRequest }) {
+function AdvisorRequests({ requests, onOpen, onMapAction }: {
+  requests: RequestSummary[]; onOpen: OpenRequest; onMapAction: (id: number, action: RequestAction) => void
+}) {
   const unassigned: RequestSummary[] = []
   const byStatus = new Map<Status, RequestSummary[]>()
 
@@ -35,9 +37,13 @@ function AdvisorRequests({ requests, onOpen }: { requests: RequestSummary[]; onO
   return <div className="map-queue">
     {groups.map(({ title, rows }) => <section key={title}>
       <h3>{title}</h3>
-      {rows.map(row => <Button key={row.id} variant="text-button" onClick={() => onOpen(row.id)}>
-        {code(row.id)} · {row.model} <span className="meta">{row.plate}</span>
-      </Button>)}
+      {rows.map(row => <div key={row.id}>
+        <Button variant="text-button" onClick={() => onOpen(row.id)}>
+          {code(row.id)} · {row.model} <span className="meta">{row.plate}</span>
+        </Button>
+        {row.status === 'ready' && !row.arrival_space && row.map_actions?.includes('markPickupParking')
+          && <Button variant="text-button" onClick={() => onMapAction(row.id, 'markPickupParking')}>Указать место выдачи</Button>}
+      </div>)}
     </section>)}
   </div>
 }
@@ -78,15 +84,20 @@ export function Overview({ dashboard, onMove, onMapAction, onOpen, onNewRequest,
       <Button variant="text-button" onClick={() => onOpen(transfer.id)}>Открыть задачу</Button>
     </div> : active ? <div className="shift-task">
       <p><strong>Пост {active.bay_id} · {active.model}</strong> <StatusTag status={active.status} /></p>
-      <WorkTimer timer={active.work_timer} />
-      <Button variant="text-button" onClick={() => onOpen(active.id)}>Открыть задачу</Button>
+      {active.status === 'pickup_pending' ? <>
+        <p>Перегони на клиентскую парковку и отметь место.</p>
+        <Button variant="primary" onClick={() => onMapAction(active.id, 'markPickupParking')}>Указать место выдачи</Button>
+      </> : <>
+        <WorkTimer timer={active.work_timer} />
+        <Button variant="text-button" onClick={() => onOpen(active.id)}>Открыть задачу</Button>
+      </>}
     </div> : <p className="shift-task muted">Активного назначения пока нет.</p>}
   </header>
   const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove} onMapAction={onMapAction} shift={shift}
     onOpenStock={role === 'advisor' || role === 'manager' ? onStock : undefined}
     onNewRequest={role === 'advisor' ? onNewRequest : undefined} onNewArrival={role === 'advisor' ? onNewArrival : undefined}
     queues={role === 'advisor' && requests.some(row => !closedStatuses.has(row.status))
-      ? <AdvisorRequests requests={requests} onOpen={onOpen} /> : undefined} />
+      ? <AdvisorRequests requests={requests} onOpen={onOpen} onMapAction={onMapAction} /> : undefined} />
   if (role === 'advisor' || role === 'mechanic') return floor
   return <>
     <Heading title="Обзор автосервиса" subtitle="Загрузка цеха и движение заказов" eyebrow="КАБИНЕТ УПРАВЛЯЮЩЕГО" />

@@ -4,7 +4,8 @@ import { Panel } from '../../shared/ui'
 
 export function ParkingStatus({ arrival_space, parking_space, parking_reason, parts_expected_date, status }: Pick<RequestDetail,
   'arrival_space' | 'parking_space' | 'parking_reason' | 'parts_expected_date' | 'status'>) {
-  if (arrival_space) return <Panel inset title={`Клиентская стоянка · место ${arrival_space}`}><p>Автомобиль у сервиса.</p></Panel>
+  if (arrival_space) return <Panel inset title={`Клиентская стоянка · место К${arrival_space}`}>
+    <p>{status === 'ready' ? 'Автомобиль ждёт выдачи.' : 'Автомобиль у сервиса.'}</p></Panel>
   if (parking_space === null) return null
   const awaitingTransfer = status === 'transfer_pending'
   return <Panel inset title={`Парковка · место ${parking_space}`}>

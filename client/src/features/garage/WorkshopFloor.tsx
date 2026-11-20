@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import type { Dashboard, ParkingSpace, RequestAction, RoutingAction } from '../../api/types'
-import { code, dateOnly } from '../../shared/format'
+import { code, dateOnly, money } from '../../shared/format'
 import { actionLabels, presenceLabels } from '../../shared/labels'
 import { Button } from '../../shared/ui'
 import { StatusTag } from '../requests/status'
@@ -12,9 +12,9 @@ type ArrivalAction = 'arrivalPark' | 'leaveArrival'
 export type MoveRequest = (requestId: number, action: RoutingAction | ArrivalAction, destination: MapLocation) => void
 
 function moveAction(actions: RoutingAction[], place: MapLocation) {
-  if (place.kind === 'arrival') return
+  if (place.kind === 'arrival') return actions.includes('markPickupParking') ? 'markPickupParking' : undefined
   if (place.kind === 'parking') return actions.includes('park') ? 'park' : undefined
-  return actions.find(key => key !== 'park')
+  return actions.find(key => key !== 'park' && key !== 'markPickupParking')
 }
 
 export function WorkshopFloor({ dashboard, onOpen, onMove, onMapAction, onOpenStock, onNewRequest, onNewArrival, queues, shift }: {
@@ -28,7 +28,7 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onMapAction, onOpenSt
   const arrivals: ParkingSpace[] = arrivalLocations.map(({ id }) => {
     const request = requests.find(row => row.arrival_space === id)
     return { id, request_id: request?.id ?? null, model: request?.model ?? null, plate: request?.plate ?? null,
-      expected_date: null, occupied: Boolean(request) }
+      expected_date: null, occupied: Boolean(request || dashboard.occupied_arrivals?.includes(id)) }
   })
   const entries = sceneLocations.map(place => ({
     place, vehicle: (place.kind === 'bay' ? bays : place.kind === 'arrival' ? arrivals : parking).find(item => item.id === place.id),
@@ -66,7 +66,7 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onMapAction, onOpenSt
   const person = selectedDesk && staff?.find(row => row.role === (selectedDesk === 'warehouse' ? 'stockkeeper' : 'advisor'))
   const title = selection === 'queue' ? 'Заявки по статусам' : selectedDesk === 'warehouse' ? 'Склад' : selectedDesk === 'reception' ? 'Приёмка'
     : selectedBay ? `Пост ${selectedBay.id} · ${selectedBay.name}`
-      : selected && `${arriving ? 'Клиентская стоянка' : 'Сервисная парковка'} · место ${selected.place.id}`
+      : selected && `${arriving ? 'Клиентская стоянка' : 'Сервисная парковка'} · место ${arriving && request?.status === 'ready' ? 'К' : ''}${selected.place.id}`
 
   return <div className={(advisor || shift) ? 'workshop-map workshop-map-main' : 'workshop-map'}>
     <GarageMap bays={bays} parking={parking} arrivals={arrivals} selected={selected?.place ?? null} targets={targets}
@@ -105,12 +105,17 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onMapAction, onOpenSt
             {selectedBay?.mechanic && <p>Механик: {selectedBay.mechanic}</p>}
             {arriving && request?.client_name && <p>Клиент: {request.client_name}</p>}
             {displayedRequest.transfer && <p className="muted">Перегон на пост {displayedRequest.transfer.bay_id} · {displayedRequest.transfer.mechanic_name}</p>}
+            {displayedRequest.payment_due !== undefined && <p>{displayedRequest.payment_due > 0
+              ? `К оплате: ${money(displayedRequest.payment_due)}` : 'К оплате ничего не осталось'}</p>}
             {expected && <p className="muted">Ожидаемая поставка: {dateOnly(expected)}</p>}
             <div className="map-toolbar-actions">
-              {displayedRequest.map_actions?.map(key => <Button key={key} variant="primary"
+              {displayedRequest.map_actions?.filter(key => key !== 'markPickupParking' || !displayedRequest.arrival_space)
+                .map(key => <Button key={key} variant="primary"
                 onClick={() => onMapAction(displayedRequest.id, key)}>{actionLabels[key]}</Button>)}
               <Button variant={displayedRequest.map_actions?.length ? 'secondary' : 'primary'}
                 onClick={() => onOpen(displayedRequest.id)}>Открыть заявку</Button>
+              {displayedRequest.arrival_space && displayedRequest.map_actions?.includes('markPickupParking') &&
+                <Button variant="text-button" onClick={() => onMapAction(displayedRequest.id, 'markPickupParking')}>Изменить место выдачи</Button>}
             </div>
             {arriving && advisor && request && <Button variant="text-button"
               onClick={() => onMove(request.id, 'leaveArrival', selected.place)}>Освободить место</Button>}
@@ -135,7 +140,8 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onMapAction, onOpenSt
               {onNewArrival && <Button variant="secondary" onClick={() => onNewArrival(selected.place.id)}>Создать заявку для этого места</Button>}
             </>}
           </>}
-          {targets.length > 0 && <p className="map-routing-hint">Для перемещения выберите выделенное место на карте.</p>}
+          {targets.length > 0 && <p className="map-routing-hint">{request?.status === 'pickup_pending'
+            ? 'После перегона выберите место на клиентской парковке.' : 'Для перемещения выберите выделенное место на карте.'}</p>}
         </>}
       </section>}
     </GarageMap>

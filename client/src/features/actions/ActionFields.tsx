@@ -99,6 +99,16 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
         options={ [['', 'Выберите место'], ...arrivalLocations.filter(place => !occupied.has(place.id))
           .map((place): Option => [place.id, `Место ${place.id}`])] } />
     }
+    case 'markPickupParking': {
+      const spaces = arrivalLocations.filter(place => place.id === row.arrival_space
+        || !dashboard.occupied_arrivals?.includes(place.id))
+      return <>
+        <p>{spaces.length ? 'Укажите место, на котором уже стоит автомобиль.'
+          : 'Все места на клиентской парковке заняты. После выдачи ключей место освободится.'}</p>
+        <SelectField label="Место выдачи" name="arrival_space" defaultValue={action.destination?.id ?? row.arrival_space ?? ''}
+          options={ [['', 'Выберите место'], ...spaces.map((place): Option => [place.id, `К${place.id}`])] } />
+      </>
+    }
     case 'leaveArrival': return <>
       <p>Освободить место {row.arrival_space} на клиентской стоянке?</p>
       <input type="hidden" name="arrival_space" value={row.arrival_space ?? ''} />
@@ -160,6 +170,6 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
         <SelectField label="Способ оплаты" name="method" options={Object.entries(paymentLabels)} />
       </>
     }
-    case 'issue': return <p>Подтвердите передачу автомобиля клиенту. Заказ перейдёт в историю.</p>
+    case 'issue': return <p>Подтвердите, что ключи от машины на месте К{row.arrival_space} переданы клиенту.</p>
   }
 }

@@ -13,7 +13,7 @@ const actionOrder: RequestAction[] = [
   'receive', 'schedule', 'cancel', 'diagnose', 'startDiagnosis', 'diagnosisReport', 'estimate', 'addWorkOrder', 'classifyLine',
   'arrivalPark', 'leaveArrival',
   'dispatchTransfer', 'cancelTransfer', 'assign', 'startRepair', 'resume', 'repairReport', 'park', 'moveBay',
-  'pause', 'release', 'ready', 'rework', 'returnCar', 'payment', 'issue',
+  'pause', 'release', 'ready', 'rework', 'returnCar', 'markPickupParking', 'payment', 'issue',
 ]
 
 function PaymentPanel({ row }: { row: RequestDetail }) {

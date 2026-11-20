@@ -76,11 +76,12 @@ export function GarageMap({ bays, parking, arrivals = noArrivals, selected, targ
           : `${arrival ? 'Клиентская стоянка' : 'Сервисная парковка'}, место ${place.id}, ${model ?? (entry?.occupied ? 'занято' : 'свободно')}`
         return <button key={key} className={`marker ${bay ? 'bay-marker' : 'parking-marker'}${arrival ? ' arrival-marker' : ''}`} type="button" hidden={hidden}
           data-location={key} data-occupied={Boolean(entry?.occupied)} data-reserved={Boolean(post?.reserved)} data-target={targets.includes(key)}
-          style={{ left: x, top: y }} aria-label={awaitingEstimate ? `${name} · Подготовка заказ-наряда` : name}
+          style={{ left: x, top: y }} aria-label={awaitingEstimate ? `${name} · Подготовка заказ-наряда` : post?.status === 'pickup_pending' ? `${name} · Ждёт перегона к выдаче` : name}
           title={bay && model ? `${name} · ${model}` : name}
           aria-pressed={selectedKey === key} onClick={() => onSelect(place)}>
           {bay ? `Пост ${place.id}` : arrival ? `К${place.id}` : String(place.id).padStart(2, '0')}
           {awaitingEstimate && <small className="marker-stage">Ждёт наряд</small>}
+          {post?.status === 'pickup_pending' && <small className="marker-stage">На перегон</small>}
         </button>
       })}
     </div>

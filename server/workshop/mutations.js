@@ -84,6 +84,19 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     return `Пост ${bayId} · ${bayName}.`;
   }
 
+  function placeOnArrival(row, input) {
+    const space = integer(input.arrival_space, 'Место на клиентской стоянке', 1, 5);
+    requireValue(!get('SELECT 1 FROM arrival_parking WHERE space_id=? AND request_id<>?', space, row.id),
+      'Это место на клиентской стоянке уже занято.', 409);
+    requireValue(!get(`SELECT 1 FROM service_requests r LEFT JOIN arrival_parking p ON p.request_id=r.id
+      LEFT JOIN orders o ON o.request_id=r.id LEFT JOIN parking_assignments s ON s.order_id=o.id
+      WHERE r.vehicle_id=? AND r.id<>? AND (p.space_id IS NOT NULL OR o.bay_id IS NOT NULL OR s.space_id IS NOT NULL)`, row.vehicle_id, row.id),
+    'Автомобиль уже размещён на карте по другой заявке.', 409);
+    run(`INSERT INTO arrival_parking(space_id,request_id) VALUES (?,?)
+      ON CONFLICT(request_id) DO UPDATE SET space_id=excluded.space_id`, space, row.id);
+    return space;
+  }
+
   function checkTransferVersion(row, input) {
     const id = input.transfer_id == null ? null : integer(input.transfer_id, 'Задача перегона');
     requireValue(id === row.transfer_id, 'Назначение изменилось. Откройте задачу заново.', 409);
@@ -181,19 +194,9 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           run("UPDATE service_requests SET status='cancelled' WHERE id=?", id);
           if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', id);
           break;
-        case 'arrivalPark': {
-          const space = integer(input.arrival_space, 'Место на клиентской стоянке', 1, 5);
-          requireValue(!get('SELECT 1 FROM arrival_parking WHERE space_id=? AND request_id<>?', space, id),
-            'Это место на клиентской стоянке уже занято.', 409);
-          requireValue(!get(`SELECT 1 FROM service_requests r LEFT JOIN arrival_parking p ON p.request_id=r.id
-            LEFT JOIN orders o ON o.request_id=r.id LEFT JOIN parking_assignments s ON s.order_id=o.id
-            WHERE r.vehicle_id=? AND r.id<>? AND (p.space_id IS NOT NULL OR o.bay_id IS NOT NULL OR s.space_id IS NOT NULL)`, row.vehicle_id, id),
-          'Автомобиль уже размещён на карте по другой заявке.', 409);
-          run(`DELETE FROM arrival_parking WHERE request_id=?`, id);
-          run('INSERT INTO arrival_parking(space_id,request_id) VALUES (?,?)', space, id);
-          note = `Место ${space}.`;
+        case 'arrivalPark':
+          note = `Место ${placeOnArrival(row, input)}.`;
           break;
-        }
         case 'leaveArrival': {
           const expected = input.arrival_space == null ? row.arrival_space : integer(input.arrival_space, 'Место на клиентской стоянке', 1, 5);
           requireValue(expected === row.arrival_space, 'Место автомобиля изменилось. Обновите карту.', 409);
@@ -319,15 +322,27 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           addHistory(id, user, 'Комментарий проверки', instruction, 0);
           break;
         }
-        case 'ready':
-          updateOrder(row, 'ready', { bay_id: null, inspection_note: str(input.note, 'Итог проверки', { optional: true }) });
-          note = str(input.public_note, 'Сообщение клиенту', { optional: true }) || 'Можно забрать автомобиль в сервисе.';
+        case 'ready': {
+          const result = str(input.note, 'Итог проверки', { optional: true });
+          if (result) updateOrder(row, 'inspection', { inspection_note: result });
+          const message = str(input.public_note, 'Сообщение клиенту', { optional: true });
+          run('INSERT INTO pickup_parking_tasks(order_id,public_note) VALUES (?,?)', row.order_id, message);
+          note = 'Автомобиль готовят к перегону на клиентскую парковку.';
           break;
+        }
+        case 'markPickupParking': {
+          const space = placeOnArrival(row, input);
+          const task = get('SELECT public_note FROM pickup_parking_tasks WHERE order_id=?', row.order_id);
+          run('DELETE FROM pickup_parking_tasks WHERE order_id=?', row.order_id);
+          if (row.parking_space) run('DELETE FROM parking_assignments WHERE order_id=?', row.order_id);
+          updateOrder(row, 'ready', { bay_id: null });
+          note = `Место К${space}. Можно забрать ключи у приёмщика.`;
+          if (task?.public_note) addHistory(id, user, 'Сообщение о выдаче', task.public_note);
+          break;
+        }
         case 'returnCar':
           note = str(input.note, 'Причина возврата');
-          updateOrder(row, 'ready', { bay_id: null });
-          if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', id);
-          if (row.parking_space) run('DELETE FROM parking_assignments WHERE order_id=?', row.order_id);
+          updateOrder(row, 'ready');
           break;
         case 'payment': {
           const amount = integer(input.amount, 'Сумма', 1, money.total - money.paid);
@@ -339,6 +354,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
         case 'issue':
           requireValue(money.paid === money.total, 'Перед выдачей зарегистрируйте остаток оплаты.', 409);
           updateOrder(row, 'issued', { bay_id: null });
+          run('DELETE FROM arrival_parking WHERE request_id=?', id);
           break;
       }
       addHistory(id, user, transitions[key][2], note, ['release', 'dispatchTransfer', 'cancelTransfer', 'classifyLine'].includes(key) ? 0 : 1);

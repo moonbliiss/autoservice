@@ -197,7 +197,7 @@ export function useWorkshop() {
     try {
       const updated = await updateRequest(id, 'ready', {})
       if (detail?.id === id) setDetail(updated)
-      await refreshDashboard('Автомобиль готов к выдаче.')
+      await refreshDashboard('Механику назначен перегон на клиентскую парковку.')
     } catch (error) {
       await refreshDashboard(errorMessage(error), true)
     } finally {
@@ -287,7 +287,7 @@ export function useWorkshop() {
       else {
         const updated = await updateRequest(action.row.id, key, data)
         if (!action.fromMap) setDetail(updated)
-        if (key === 'issue') {
+        if (key === 'issue' && !action.fromMap) {
           setSection('archive')
           setSearch('')
           setFilter('all')
@@ -305,7 +305,9 @@ export function useWorkshop() {
       : key === 'orderSupply' ? 'Заказ поставщику добавлен в поставки.'
       : key === 'receiveSupply' ? 'Запчасти оприходованы на склад.'
       : key === 'dispatchTransfer' ? 'Задача перегона назначена. Автомобиль пока на парковке.'
-      : key === 'issue' ? 'Автомобиль выдан. Заявка перенесена в архив.'
+      : key === 'markPickupParking' ? `Автомобиль готов к выдаче на месте К${data.arrival_space}.`
+      : key === 'payment' ? 'Оплата зарегистрирована.'
+      : key === 'issue' ? 'Ключи выданы. Заявка перенесена в архив.'
       : key === 'warehouseIssue' ? 'Запчасти выданы механику и списаны со склада.' : 'Изменения сохранены.'
     try {
       await refreshDashboard(message)

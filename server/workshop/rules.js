@@ -27,7 +27,8 @@ export const transitions = {
   resume: ['mechanic', ['paused'], 'Ремонт возобновлён'],
   repairReport: ['mechanic', ['repairing'], 'Работы переданы на проверку'],
   rework: ['advisor', ['inspection'], 'Назначена доработка'],
-  ready: ['advisor', ['inspection'], 'Автомобиль готов к выдаче'],
+  ready: ['advisor', ['inspection'], 'Контроль качества пройден'],
+  markPickupParking: ['advisor mechanic', ['pickup_pending', 'ready'], 'Автомобиль на клиентской парковке для выдачи'],
   release: ['advisor', ['paused'], 'Пост освобождён на время паузы'],
   returnCar: ['advisor', ['declined', 'received', 'awaiting_estimate'], 'Автомобиль готов к возврату'],
   payment: ['advisor', ['ready'], 'Зарегистрирована оплата'],
@@ -43,18 +44,20 @@ export function availableActions(user, row) {
     if (key === 'arrivalPark') return !row.bay_id && !row.parking_space;
     if (key === 'dispatchTransfer') return Boolean(row.parking_space);
     if (key === 'assign') return !row.parking_space;
-    if (key === 'payment') return row.total > row.paid;
+    if (key === 'markPickupParking') return user.role === 'mechanic' ? row.status === 'pickup_pending' : row.status === 'ready';
+    if (key === 'payment') return Boolean(row.arrival_space) && row.total > row.paid;
     if (key === 'classifyLine') return row.work_orders.some(document => document.status !== 'declined'
       && document.lines.some(line => line.unclassified));
     if (['approve', 'decline', 'recordDecision'].includes(key)) return pending;
-    if (key === 'ready') return !pending;
+    if (key === 'ready') return !pending && Boolean(row.bay_id && row.mechanic_id);
     if (key === 'release') return Boolean(row.bay_id);
     if (key === 'resume') return Boolean(row.bay_id) && !row.mechanic_busy;
-    return key !== 'issue' || row.total === row.paid;
+    return key !== 'issue' || Boolean(row.arrival_space) && row.total === row.paid;
   }).map(([key]) => key);
 }
 
 export function routingActions(role, row) {
+  if (role === 'mechanic') return row.status === 'pickup_pending' ? ['markPickupParking'] : [];
   return ['park', 'moveBay', 'assign', 'diagnose', 'dispatchTransfer'].filter(key => {
     const [roles, states] = transitions[key];
     return roles.split(' ').includes(role) && states.includes(row.status)

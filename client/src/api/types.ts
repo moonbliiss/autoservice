@@ -11,16 +11,16 @@ export type Status =
   | 'new' | 'scheduled' | 'cancelled' | 'received'
   | 'diagnosis_assigned' | 'diagnosing' | 'awaiting_estimate' | 'awaiting_approval'
   | 'declined' | 'approved' | 'repair_assigned' | 'repairing' | 'paused'
-  | 'waiting_parts' | 'transfer_pending' | 'inspection' | 'ready' | 'issued'
+  | 'waiting_parts' | 'transfer_pending' | 'inspection' | 'pickup_pending' | 'ready' | 'issued'
 export type RequestAction =
   | 'schedule' | 'cancel' | 'receive' | 'diagnose' | 'startDiagnosis' | 'diagnosisReport'
   | 'estimate' | 'addWorkOrder' | 'approve' | 'decline' | 'assign' | 'startRepair' | 'pause' | 'resume'
-  | 'repairReport' | 'ready' | 'rework' | 'release' | 'returnCar' | 'payment' | 'issue'
+  | 'repairReport' | 'ready' | 'markPickupParking' | 'rework' | 'release' | 'returnCar' | 'payment' | 'issue'
   | 'recordDecision' | 'moveBay' | 'park'
   | 'dispatchTransfer' | 'completeTransfer' | 'cancelTransfer'
   | 'classifyLine' | 'arrivalPark' | 'leaveArrival'
 export type PaymentMethod = 'cash' | 'card' | 'transfer'
-export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose' | 'dispatchTransfer'>
+export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose' | 'dispatchTransfer' | 'markPickupParking'>
 
 export interface RequestSummary {
   id: number
@@ -38,6 +38,7 @@ export interface RequestSummary {
   client_name?: string
   routing_actions?: RoutingAction[]
   map_actions?: RequestAction[]
+  payment_due?: number
   transfer?: { id: number; bay_id: number; bay_name: string; mechanic_id: number; mechanic_name: string; instructions: string }
   work_timer?: { kind: 'diagnosis' | 'repair'; elapsed_ms: number; started_at: number | null }
 }
@@ -168,6 +169,7 @@ export interface WarehouseNeed {
 }
 
 export interface Dashboard {
+  occupied_arrivals?: number[]
   user: { id: number; role: Role; name: string }
   requests: RequestSummary[]
   vehicles?: { id: number; client_id?: number; model: string; plate: string; mileage: number | null }[]

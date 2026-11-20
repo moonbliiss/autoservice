@@ -86,12 +86,25 @@ test('заявка проходит диагностику, согласован
   step(mechanic, 'startRepair');
   assert.equal(workshop.details(mechanic, id).parts_remaining[3], 0);
   step(mechanic, 'repairReport', { ...report, minutes: 10 });
-  assert.equal(step(advisor, 'ready', { note: 'Контроль пройден', public_note: 'Готово, можно забирать' }).bay_id, null);
+  const checked = step(advisor, 'ready', { note: 'Контроль пройден', public_note: 'Готово, можно забирать' });
+  assert.equal(checked.status, 'pickup_pending');
+  assert.equal(checked.bay_id, 3);
+  assert.throws(() => step(advisor, 'payment', { amount: 2000, method: 'cash' }), { status: 409 });
+  assert.throws(() => step(advisor, 'markPickupParking', { arrival_space: 3 }), { status: 409 });
+  const ready = step(mechanic, 'markPickupParking', { arrival_space: 3 });
+  assert.equal(ready.status, 'ready');
+  assert.equal(workshop.details(advisor, id).bay_id, null);
+  const onMap = () => workshop.dashboard(advisor).requests.find(row => row.id === id);
+  assert.equal(onMap().arrival_space, 3);
+  assert.ok(onMap().map_actions.includes('payment'));
+  assert.equal(onMap().payment_due, 6600);
   assert.throws(() => step(advisor, 'issue'), { status: 409 });
   assert.equal(step(advisor, 'payment', { amount: 2000, method: 'cash' }).paid, 2000);
   assert.throws(() => step(advisor, 'payment', { amount: 4601, method: 'card' }), { status: 400 });
   assert.equal(step(advisor, 'payment', { amount: 4600, method: 'card' }).paid, 6600);
+  assert.ok(onMap().map_actions.includes('issue'));
   assert.equal(step(advisor, 'issue').status, 'issued');
+  assert.equal(workshop.dashboard(advisor).occupied_arrivals.includes(3), false);
   const finished = workshop.details(client, id);
   assert.equal(finished.status, 'issued');
   assert.equal(finished.paid, 6600);
@@ -113,6 +126,9 @@ test('отмена визита, возврат без ремонта и поп�
   workshop.action(client, request.id, 'decline', { version: 1, note: 'Отложить ремонт' });
   const returned = workshop.action(advisor, request.id, 'returnCar', { note: 'Автомобиль можно забрать сегодня' });
   assert.equal(returned.total, 0);
+  assert.ok(returned.map_actions.includes('markPickupParking'));
+  assert.throws(() => workshop.action(advisor, request.id, 'issue', {}), { status: 409 });
+  workshop.action(advisor, request.id, 'markPickupParking', { arrival_space: 1 });
   assert.equal(workshop.action(advisor, request.id, 'issue', {}).status, 'issued');
   assert.throws(() => workshop.restock(client, { part_id: 2, quantity: 5, note: 'Накладная' }), { status: 403 });
   const stockkeeper = workshop.profile('stockkeeper');
@@ -459,7 +475,7 @@ test('заказ-наряды согласуются отдельно до на�
   const client = workshop.profile('client2');
   const mechanic = workshop.profile('mechanic2');
   const stockkeeper = workshop.profile('stockkeeper');
-  const draft = workshop.createRequest(advisor, { client_id: client.id, vehicle_id: 3,
+  const draft = workshop.createRequest(advisor, { client_id: client.id, model: 'Audi A3', plate: 'Т617ТТ55',
     description: 'Проверить двигатель и подвеску', accept_now: 'yes', mileage: 86000 });
   const step = (user, action, input = {}) => workshop.action(user, draft.id, action, input);
   const need = () => workshop.dashboard(stockkeeper).warehouse_needs.filter(row => row.request_id === draft.id);
@@ -475,6 +491,7 @@ test('заказ-наряды согласуются отдельно до на�
   assert.ok(!need().some(row => row.name === 'Сайлентблок'));
   workshop.action(mechanic, 2, 'repairReport', { result: 'Работы выполнены' });
   workshop.action(advisor, 2, 'ready', { note: 'Проверка пройдена' });
+  workshop.action(mechanic, 2, 'markPickupParking', { arrival_space: 1 });
   step(advisor, 'assign', { mechanic_id: mechanic.id, bay_id: 2, instructions: 'Работы по двигателю' });
   step(mechanic, 'startRepair');
   const issue = { request_id: draft.id, part_id: 1, quantity: 1 };
@@ -507,6 +524,7 @@ test('заказ-наряды согласуются отдельно до на�
   step(mechanic, 'startRepair');
   step(mechanic, 'repairReport', { result: 'Дополнительные работы завершены' });
   step(advisor, 'ready', { note: 'Проверка пройдена' });
+  step(mechanic, 'markPickupParking', { arrival_space: 2 });
   step(advisor, 'payment', { amount: 3300, method: 'cash' });
   assert.equal(step(advisor, 'issue').status, 'issued');
 });
@@ -601,7 +619,8 @@ test('после диагностики машина видна на карте 
   workshop.action(other, 1, 'completeTransfer', { transfer_id: transfer.transfer.id });
   workshop.action(other, 1, 'startRepair', {});
   workshop.action(other, 1, 'repairReport', { result: 'Тяга заменена' });
-  assert.equal(workshop.action(advisor, 1, 'ready', {}).status, 'ready');
+  assert.equal(workshop.action(advisor, 1, 'ready', {}).status, 'pickup_pending');
+  assert.equal(workshop.action(other, 1, 'markPickupParking', { arrival_space: 5 }).status, 'ready');
 });
 
 test('детали с одинаковым названием различаются по введённому артикулу производителя', t => {
@@ -623,4 +642,27 @@ test('детали с одинаковым названием различают
   workshop.setPartNumber(stockkeeper, first.part_id, { sku: 'ZX-10' });
   assert.deepEqual(workshop.dashboard(stockkeeper).warehouse_needs.filter(row => row.request_id === 3)
     .map(row => [row.sku, row.stock]).sort(), [['ABC-124', 0], ['ZX-10', 4]]);
+});
+
+test('место выдачи подтверждает назначенный механик, занятое место сохраняет задачу открытой', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const mechanic = workshop.profile('mechanic2');
+  const other = workshop.profile('mechanic');
+  const client = workshop.profile('client2');
+  workshop.action(advisor, 3, 'arrivalPark', { arrival_space: 2 });
+  workshop.action(mechanic, 2, 'repairReport', { result: 'Работы завершены' });
+  workshop.action(advisor, 2, 'ready', {});
+  assert.deepEqual(workshop.dashboard(mechanic).occupied_arrivals, [2]);
+  const task = () => workshop.dashboard(mechanic).requests.find(row => row.id === 2);
+  assert.ok(task().routing_actions.includes('markPickupParking'));
+  assert.equal(task().bay_id, 2);
+  assert.throws(() => workshop.action(other, 2, 'markPickupParking', { arrival_space: 3 }), { status: 404 });
+  assert.throws(() => workshop.action(mechanic, 2, 'markPickupParking', { arrival_space: 2 }), { status: 409 });
+  assert.equal(task().status, 'pickup_pending');
+  workshop.action(mechanic, 2, 'markPickupParking', { arrival_space: 4 });
+  assert.deepEqual(workshop.dashboard(advisor).occupied_arrivals, [2, 4]);
+  assert.equal(workshop.details(client, 2).arrival_space, 4);
+  assert.throws(() => workshop.action(mechanic, 2, 'markPickupParking', { arrival_space: 5 }), { status: 409 });
 });
