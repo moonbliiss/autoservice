@@ -17,7 +17,7 @@ export function WarehouseNeeds({ needs, onIssue, onOrder, onOpen }: {
     requests.set(need.request_id, parts)
   }
   const canManage = Boolean(onIssue && onOrder)
-  if (!needs.length) return <Panel title="Потребность в запчастях"><p className="empty">По согласованным сметам деталей пока не требуется.</p></Panel>
+  if (!needs.length) return <Panel title="Потребность в запчастях"><p className="empty">В открытых заказ-нарядах нет запчастей, которые ещё нужно выдать.</p></Panel>
 
   return <div className="column">
     {[...requests].map(([id, parts]) => {
@@ -30,17 +30,22 @@ export function WarehouseNeeds({ needs, onIssue, onOrder, onOpen }: {
           <span>{mechanic ?? 'Механик ещё не назначен'}</span>
           {onOpen && <StatusTag status={status} />}
         </div>
-        <Table headings={['Запчасть', 'К выдаче', 'В наличии', 'В поставке', ...(canManage ? ['Действия'] : [])]}
+        <Table headings={['Запчасть', 'К выдаче', 'На согласовании', 'В наличии', 'В поставке', ...(canManage ? ['Действия'] : [])]}
           rows={parts.map(need => {
-            const remaining = need.required - need.issued
-            const shortage = remaining - need.stock - need.incoming
-            return { key: need.part_id, cells: [
-              <><strong>{need.name}</strong><br /><span className="meta">{need.sku}</span></>,
-              remaining, need.stock, need.incoming || '—',
+            const shortage = need.approved_remaining - need.stock - need.incoming
+            return { key: need.part_id ?? 'line-' + need.unclassified_line_id, cells: [
+              <><strong>{need.name}</strong><br /><span className="meta">{need.document_titles.join(' · ')}</span><br />
+                <span className="meta">{need.sku?.startsWith('AUTO-') ? 'Добавлена вручную'
+                  : need.sku ?? 'Тип позиции требует уточнения'}</span></>,
+              need.approved_remaining || '—', need.pending || '—',
+              need.part_id === null ? '—' : need.stock || <strong>0 · Нет в наличии</strong>, need.incoming || '—',
               ...(canManage ? [<div className="actions warehouse-actions">
                 {need.can_issue && need.stock > 0 && <Button onClick={() => onIssue?.(need)}>Выдать</Button>}
-                {shortage > 0 && <Button variant="text-button" onClick={() => onOrder?.(need)}>Заказать</Button>}
-                {!need.can_issue && need.stock > 0 && <span className="muted">Выдача после назначения на пост</span>}
+                {need.part_id !== null && shortage > 0
+                  && <Button variant="text-button" onClick={() => onOrder?.(need)}>Заказать</Button>}
+                {need.part_id === null ? <span className="muted">Тип уточняет приёмщик</span>
+                  : !need.approved_remaining ? <span className="muted">Ожидает согласования заказ-наряда</span>
+                    : !need.can_issue && need.stock > 0 && <span className="muted">Выдача после назначения на пост</span>}
               </div>] : []),
             ] }
           })} />
@@ -53,7 +58,7 @@ export function WarehouseDesk({ needs, onIssue, onOrder }: {
   needs: WarehouseNeed[]; onIssue: (need: WarehouseNeed) => void; onOrder: (need: WarehouseNeed) => void
 }) {
   return <>
-    <Heading title="Потребность в деталях" subtitle="Детали по согласованным сметам. Что можно выдать механику и что ещё нужно заказать." />
+    <Heading title="Потребность в деталях" subtitle="Запчасти из заказ-нарядов, наличие и поставки." />
     <WarehouseNeeds needs={needs} onIssue={onIssue} onOrder={onOrder} />
   </>
 }

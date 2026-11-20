@@ -76,15 +76,15 @@ export function createInventory({ all, get, run, transaction }) {
     const partId = integer(input.part_id, 'Запчасть');
     const quantity = integer(input.quantity, 'Количество запчастей', 1, 2000);
     return transaction(() => {
-      const order = get(`SELECT id, status AS work_status, estimate_version, mechanic_id, bay_id
+      const order = get(`SELECT id, status AS work_status, mechanic_id, bay_id
         FROM orders WHERE request_id=?`, requestId);
       requireValue(order, 'Заказ-наряд не найден.', 404);
       requireValue(canIssue(order), 'Выдача доступна, когда автомобиль назначен механику на пост для ремонта.', 409);
-      const { approved } = get(`SELECT COALESCE(SUM(quantity),0) AS approved FROM estimate_lines
-        WHERE order_id=? AND version=? AND part_id=?`, order.id, order.estimate_version, partId);
+      const { approved } = get(`SELECT COALESCE(SUM(quantity),0) AS approved FROM work_order_document_lines
+        WHERE order_id=? AND decision='approved' AND part_id=?`, order.id, partId);
       const { used } = get(`SELECT COALESCE(SUM(quantity),0) AS used
         FROM order_part_usage WHERE order_id=? AND part_id=?`, order.id, partId);
-      requireValue(quantity + used <= approved, 'Выдача превышает оставшееся количество по смете.', 409);
+      requireValue(quantity + used <= approved, 'Выдача превышает согласованное количество по заказ-нарядам.', 409);
       requireValue(run('UPDATE parts SET stock=stock-? WHERE id=? AND stock>=?', quantity, partId, quantity).changes,
         'На складе недостаточно запчастей.', 409);
       const movementId = run('INSERT INTO stock_movements(part_id,account_id,quantity) VALUES (?,?,?)',
@@ -98,18 +98,29 @@ export function createInventory({ all, get, run, transaction }) {
 
   function needs() {
     const rows = all(`SELECT o.request_id,o.bay_id,o.mechanic_id,o.status AS work_status,a.name AS mechanic,
-      CASE WHEN parking.space_id IS NOT NULL THEN 'waiting_parts' ELSE o.status END AS status,
-      v.model,v.plate,p.id AS part_id,p.name,p.sku,p.stock,SUM(e.quantity) AS required,
+      CASE WHEN transfer.id IS NOT NULL THEN 'transfer_pending' WHEN parking.space_id IS NOT NULL THEN 'waiting_parts'
+        ELSE o.status END AS status,
+      v.model,v.plate,p.id AS part_id,CASE WHEN p.id IS NULL THEN e.id END AS unclassified_line_id,
+      COALESCE(p.name,e.name) AS name,p.sku,COALESCE(p.stock,0) AS stock,SUM(e.quantity) AS required,
+      SUM(CASE WHEN e.decision='approved' THEN e.quantity ELSE 0 END) AS approved,
+      SUM(CASE WHEN e.decision='pending' THEN e.quantity ELSE 0 END) AS pending,
+      JSON_GROUP_ARRAY(DISTINCT e.document_title) AS document_titles,
       COALESCE((SELECT SUM(u.quantity) FROM order_part_usage u WHERE u.order_id=o.id AND u.part_id=p.id),0) AS issued,
       COALESCE((SELECT SUM(s.quantity-s.received) FROM part_supplies s
         WHERE s.request_id=o.request_id AND s.part_id=p.id AND s.received<s.quantity),0) AS incoming
       FROM orders o JOIN service_requests r ON r.id=o.request_id JOIN vehicles v ON v.id=r.vehicle_id
-      JOIN estimate_lines e ON e.order_id=o.id AND e.version=o.estimate_version JOIN parts p ON p.id=e.part_id
+      JOIN work_order_document_lines e ON e.order_id=o.id AND e.decision<>'declined'
+      LEFT JOIN parts p ON p.id=e.part_id
       LEFT JOIN accounts a ON a.id=o.mechanic_id LEFT JOIN parking_assignments parking ON parking.order_id=o.id
-      WHERE o.status IN ('approved','repair_assigned','repairing','paused') OR (o.status='inspection' AND parking.space_id IS NOT NULL)
-      GROUP BY o.id,p.id HAVING required>issued
-      ORDER BY (o.status IN ('repair_assigned','repairing') AND o.bay_id IS NOT NULL) DESC, o.request_id,p.name`);
-    return rows.map(({ work_status, mechanic_id, ...row }) => ({ ...row, can_issue: canIssue({ ...row, work_status, mechanic_id }) }));
+      LEFT JOIN parking_transfers transfer ON transfer.order_id=o.id
+      WHERE o.status NOT IN ('ready','issued') AND (p.id IS NOT NULL OR e.unclassified=1)
+      GROUP BY o.id,p.id,unclassified_line_id HAVING approved>issued OR pending>0
+      ORDER BY (o.status IN ('repair_assigned','repairing') AND o.bay_id IS NOT NULL) DESC, o.request_id,name`);
+    return rows.map(({ work_status, mechanic_id, document_titles, ...row }) => {
+      const approved_remaining = Math.max(0, row.approved - row.issued);
+      return { ...row, document_titles: JSON.parse(document_titles), approved_remaining,
+        can_issue: row.part_id !== null && approved_remaining > 0 && canIssue({ ...row, work_status, mechanic_id }) };
+    });
   }
 
   function supplies() {

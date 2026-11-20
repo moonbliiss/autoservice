@@ -11,10 +11,11 @@ function submissionFor(action: FormAction, form: HTMLFormElement): Submission {
   if ((action.key === 'dispatchTransfer' || action.key === 'cancelTransfer') && action.row.transfer) {
     data.transfer_id = action.row.transfer.id
   }
-  if (action.key === 'estimate' || action.key === 'approve' || action.key === 'decline' || action.key === 'recordDecision') {
-    data.version = action.row.estimate_version
+  if (action.key === 'approve' || action.key === 'decline' || action.key === 'recordDecision') {
+    data.version = action.documentVersion ?? null
   }
-  if (action.key === 'estimate') {
+  if (action.key === 'estimate') data.version = action.row.estimate_version
+  if (action.key === 'estimate' || action.key === 'addWorkOrder') {
     const names = fields.getAll('name')
     const quantities = fields.getAll('quantity')
     const prices = fields.getAll('price')
@@ -52,7 +53,7 @@ export function ActionDialog({ action, dashboard, busy, error, onClose, onSubmit
   }
 
   const submitLabel = action.key === 'newRequest' ? (dashboard.user.role === 'advisor' ? 'Оформить заявку' : 'Отправить заявку')
-    : action.key === 'estimate' ? 'Отправить смету'
+    : action.key === 'estimate' || action.key === 'addWorkOrder' ? 'Отправить на согласование'
     : action.key === 'orderSupply' ? 'Создать заказ поставщику'
     : action.key === 'receiveSupply' ? 'Оприходовать на склад'
     : action.key === 'warehouseIssue' ? 'Выдать механику'

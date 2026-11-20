@@ -34,7 +34,7 @@ test('заявка проходит диагностику, согласован
     { kind: 'service', catalog_id: 4, quantity: 1, price: 3200 },
     { kind: 'part', catalog_id: 3, quantity: 1, price: 3400 },
   ] };
-  assert.equal(step(advisor, 'estimate', { ...quote, version: 0 }).total, 6600);
+  assert.equal(step(advisor, 'estimate', { ...quote, version: 0 }).work_orders[0].total, 6600);
   assert.equal(step(client, 'decline', { version: 1, note: 'Уточните производителя' }).status, 'declined');
   assert.equal(step(advisor, 'estimate', { ...quote, version: 1, note: 'Производитель указан в смете' }).estimate_version, 2);
   assert.throws(() => step(client, 'approve', { version: 1 }), { status: 409 });
@@ -136,7 +136,8 @@ test('приёмщик оформляет очный визит, распред�
   assert.match(order.tracking_token, /^[a-f0-9]{48}$/);
   assert.throws(() => workshop.tracking('0'.repeat(48)), { status: 404 });
   assert.deepEqual(Object.keys(workshop.tracking(order.tracking_token)).sort(),
-    ['appointment', 'eta', 'id', 'model', 'parking_reason', 'parking_space', 'parts_expected_date', 'status', 'visit_note']);
+    ['appointment', 'description', 'eta', 'history', 'id', 'model', 'paid',
+      'parking_reason', 'parking_space', 'parts_expected_date', 'payments', 'plate', 'status', 'total', 'visit_note', 'work_orders']);
 
   const assign = (bay_id, instructions) => ({ bay_id, mechanic_id: mechanic.id, instructions });
   workshop.action(advisor, order.id, 'diagnose', assign(2, 'Проверить тормозную систему'));
@@ -404,4 +405,112 @@ test('перегон резервирует пост, а только назна
   assert.equal(bay().request_id, 2);
   assert.equal(workshop.dashboard(advisor).parking.find(row => row.id === 4).request_id, null);
   assert.throws(() => workshop.action(mechanic, 2, 'completeTransfer', { transfer_id: next.transfer.id }), { status: 409 });
+});
+
+test('новые запчасти из заказ-наряда появляются у запчастиста с нулевым остатком ещё до согласования', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const client = workshop.profile('client');
+  const stockkeeper = workshop.profile('stockkeeper');
+  const need = () => workshop.dashboard(stockkeeper).warehouse_needs.filter(row => row.request_id === 3);
+  workshop.action(advisor, 3, 'receive', { mileage: 62000 });
+  workshop.action(advisor, 3, 'estimate', { version: 0, lines: [
+    { kind: 'custom_part', name: 'Направляющая суппорта', quantity: 2, price: 400 },
+    { kind: 'custom_part', name: 'Пыльник суппорта', quantity: 1, price: 300 },
+    { kind: 'custom', name: 'Работа слесаря', quantity: 1, price: 600 },
+  ] });
+  assert.deepEqual(need().map(row => row.name).sort(), ['Направляющая суппорта', 'Пыльник суппорта']);
+  assert.ok(need().every(row => row.stock === 0 && !row.can_issue && row.status === 'awaiting_approval'));
+  workshop.action(client, 3, 'approve', { version: 1 });
+  const part = need().find(row => row.name === 'Пыльник суппорта');
+  const order = workshop.orderSupply(stockkeeper, { part_id: part.part_id, request_id: 3, supplier: 'Поставщик', quantity: 1 });
+  workshop.receiveSupply(stockkeeper, order.id, { quantity: 1 });
+  assert.equal(need().find(row => row.part_id === part.part_id).stock, 1);
+});
+
+test('заказ-наряды согласуются отдельно до начала и во время ремонта', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const client = workshop.profile('client2');
+  const mechanic = workshop.profile('mechanic2');
+  const stockkeeper = workshop.profile('stockkeeper');
+  const draft = workshop.createRequest(advisor, { client_id: client.id, vehicle_id: 3,
+    description: 'Проверить двигатель и подвеску', accept_now: 'yes', mileage: 86000 });
+  const step = (user, action, input = {}) => workshop.action(user, draft.id, action, input);
+  const need = () => workshop.dashboard(stockkeeper).warehouse_needs.filter(row => row.request_id === draft.id);
+  const oil = { kind: 'part', catalog_id: 1, quantity: 1, price: 900 };
+  step(advisor, 'estimate', { title: 'Двигатель', version: 0, lines: [oil] });
+  step(advisor, 'addWorkOrder', { title: 'Подвеска', lines: [
+    { kind: 'custom_part', name: 'Сайлентблок', quantity: 2, price: 400 },
+  ] });
+  assert.deepEqual(workshop.tracking(draft.tracking_token).work_orders.map(doc => [doc.title, doc.status]),
+    [['Двигатель', 'pending'], ['Подвеска', 'pending']]);
+  assert.equal(step(client, 'approve', { version: 1 }).status, 'approved');
+  assert.equal(step(client, 'decline', { version: 2, note: 'Позже' }).total, 900);
+  assert.ok(!need().some(row => row.name === 'Сайлентблок'));
+  workshop.action(mechanic, 2, 'repairReport', { result: 'Работы выполнены' });
+  workshop.action(advisor, 2, 'ready', { note: 'Проверка пройдена' });
+  step(advisor, 'assign', { mechanic_id: mechanic.id, bay_id: 2, instructions: 'Работы по двигателю' });
+  step(mechanic, 'startRepair');
+  const issue = { request_id: draft.id, part_id: 1, quantity: 1 };
+  workshop.issueParts(stockkeeper, issue);
+  const updated = step(advisor, 'addWorkOrder', { title: 'Дополнительно по двигателю', lines: [
+    oil, { kind: 'custom_part', name: 'Сальник коленвала', quantity: 1, price: 1500 },
+  ] });
+  assert.equal(updated.status, 'repairing');
+  assert.ok(updated.work_timer.started_at);
+  assert.equal(updated.total, 900);
+  const pendingOil = need().find(row => row.part_id === 1);
+  assert.equal(pendingOil.pending, 1);
+  assert.equal(pendingOil.approved_remaining, 0);
+  assert.equal(pendingOil.can_issue, false);
+  assert.throws(() => workshop.issueParts(stockkeeper, issue), { status: 409 });
+  const seal = need().find(row => row.name === 'Сальник коленвала');
+  assert.equal(seal.stock, 0);
+  assert.equal(seal.pending, 1);
+  assert.equal(workshop.details(mechanic, draft.id).work_orders.length, 1);
+  step(mechanic, 'repairReport', { result: 'Основные работы завершены' });
+  assert.throws(() => step(advisor, 'ready', { note: 'Проверка пройдена' }), { status: 409 });
+  const decision = step(advisor, 'recordDecision', { version: 3, decision: 'approve', note: 'По телефону' });
+  assert.equal(decision.status, 'repair_assigned');
+  assert.equal(decision.total, 3300);
+  workshop.issueParts(stockkeeper, issue);
+  const supply = workshop.orderSupply(stockkeeper, { request_id: draft.id, part_id: seal.part_id, supplier: 'Поставщик', quantity: 1 });
+  workshop.receiveSupply(stockkeeper, supply.id, { quantity: 1 });
+  workshop.issueParts(stockkeeper, { ...issue, part_id: seal.part_id });
+  assert.equal(need().length, 0);
+  step(mechanic, 'startRepair');
+  step(mechanic, 'repairReport', { result: 'Дополнительные работы завершены' });
+  step(advisor, 'ready', { note: 'Проверка пройдена' });
+  step(advisor, 'payment', { amount: 3300, method: 'cash' });
+  assert.equal(step(advisor, 'issue').status, 'issued');
+});
+
+test('время работ измеряется автоматически и исключает паузы и парковку', t => {
+  let now = Date.UTC(2027, 0, 1);
+  const workshop = openWorkshop(':memory:', { now: () => now });
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const mechanic = workshop.profile('mechanic2');
+  now += 123_000;
+  const paused = workshop.action(mechanic, 2, 'pause', { note: 'Ждём запчасти' });
+  assert.deepEqual(paused.work_timer, { elapsed_ms: 123_000, started_at: null, kind: 'repair' });
+  assert.equal(workshop.details(advisor, 2).work_totals[0].elapsed_ms, 123_000);
+  now += 600_000;
+  workshop.action(mechanic, 2, 'resume', {});
+  now += 35_000;
+  workshop.action(advisor, 2, 'park', { parking_space: 4 });
+  now += 500_000;
+  const transfer = workshop.action(advisor, 2, 'dispatchTransfer', { bay_id: 3, mechanic_id: mechanic.id,
+    instructions: 'Продолжить замену масла' });
+  workshop.action(mechanic, 2, 'completeTransfer', { transfer_id: transfer.transfer.id });
+  workshop.action(mechanic, 2, 'startRepair', {});
+  now += 8_000;
+  const reported = workshop.action(mechanic, 2, 'repairReport', { result: 'Масло заменено' , minutes: 9999 });
+  assert.equal(reported.status, 'inspection');
+  assert.equal(reported.reports[0].elapsed_ms, 166_000);
+  assert.equal(reported.reports[0].minutes, 3);
+  assert.equal(workshop.details(advisor, 2).work_totals[0].elapsed_ms, 166_000);
 });

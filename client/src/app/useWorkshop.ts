@@ -140,6 +140,10 @@ export function useWorkshop() {
     if (locked.current) return
     ++revision.current
     setDetail(null)
+    if ((section === 'archive') !== (next === 'archive')) {
+      setSearch('')
+      setFilter('all')
+    }
     setSection(next)
     window.scrollTo(0, 0)
   }
@@ -241,6 +245,11 @@ export function useWorkshop() {
       else {
         const updated = await updateRequest(action.row.id, key, data)
         if (!action.destination) setDetail(updated)
+        if (key === 'issue') {
+          setSection('archive')
+          setSearch('')
+          setFilter('all')
+        }
       }
     } catch (error) {
       setFormError(errorMessage(error))
@@ -249,10 +258,12 @@ export function useWorkshop() {
       return
     }
     setAction(null)
-    const message = key === 'newRequest' ? 'Заявка отправлена.' : key === 'estimate' ? 'Смета отправлена клиенту.'
+    const message = key === 'newRequest' ? 'Заявка отправлена.'
+      : key === 'estimate' || key === 'addWorkOrder' ? 'Заказ-наряд отправлен на согласование.'
       : key === 'orderSupply' ? 'Заказ поставщику добавлен в поставки.'
       : key === 'receiveSupply' ? 'Запчасти оприходованы на склад.'
       : key === 'dispatchTransfer' ? 'Задача перегона назначена. Автомобиль пока на парковке.'
+      : key === 'issue' ? 'Автомобиль выдан. Заявка перенесена в архив.'
       : key === 'warehouseIssue' ? 'Запчасти выданы механику и списаны со склада.' : 'Изменения сохранены.'
     try {
       await refreshDashboard(message)

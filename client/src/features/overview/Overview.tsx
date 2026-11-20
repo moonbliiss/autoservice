@@ -4,6 +4,7 @@ import { StatusTag, closedStatuses, workshopStatuses } from '../requests/status'
 import { RequestTable, type OpenRequest } from '../requests/RequestTable'
 import { WorkshopFloor, type MoveRequest } from '../garage/WorkshopFloor'
 import { TransferTask } from '../requests/TransferTask'
+import { WorkTimer } from '../requests/WorkTimer'
 import './overview.css'
 
 export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, onStock, onCompleteTransfer, submitting }: {
@@ -13,7 +14,7 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, 
   const { requests, user: { role }, bays = [] } = dashboard
   const ready = requests.filter(row => row.status === 'ready').length
   if (role === 'client') return <>
-    <Heading title="Мои заявки" subtitle="Следите за визитом, согласованием сметы и готовностью автомобиля."
+    <Heading title="Мои заявки" subtitle="Следите за визитом, согласованием заказ-нарядов и готовностью автомобиля."
       eyebrow="КАБИНЕТ КЛИЕНТА" action={<Button variant="primary" onClick={onNewRequest}>Новая заявка</Button>} />
     <Metrics items={[
       ['Открытые заявки', requests.filter(row => !closedStatuses.has(row.status)).length],
@@ -31,6 +32,7 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, 
       {transfer ? <TransferTask row={transfer} busy={submitting} onComplete={() => onCompleteTransfer(transfer)} />
         : active ? <Panel inset title={`Ваш пост ${String(active.bay_id).padStart(2, '0')} · ${bays.find(bay => bay.id === active.bay_id)?.name ?? ''}`}>
         <div className="split"><div><strong>{active.model}</strong><p className="muted">{active.plate}</p></div><StatusTag status={active.status} /></div>
+        <WorkTimer timer={active.work_timer} />
         <div className="actions"><Button variant="primary" onClick={() => onOpen(active.id)}>Открыть задачу</Button></div>
       </Panel> : <Panel inset title="Текущий пост"><p className="muted">Активного назначения пока нет.</p></Panel>}
       <div className="section-gap" />{floor}
@@ -52,7 +54,7 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, 
       <RequestTable requests={unassigned} role={role} onOpen={onOpen} assignmentQueue={!manager} empty="Все принятые автомобили распределены." />
     </Panel>
     <Panel title="Недавние заявки" action={<Button variant="text-button" onClick={onRequests}>Все заявки</Button>}>
-      <RequestTable requests={requests.slice(0, 5)} role={role} onOpen={onOpen} />
+      <RequestTable requests={requests.filter(row => row.status !== 'issued').slice(0, 5)} role={role} onOpen={onOpen} />
     </Panel>
   </>
 }

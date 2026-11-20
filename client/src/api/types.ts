@@ -7,10 +7,11 @@ export type Status =
   | 'waiting_parts' | 'transfer_pending' | 'inspection' | 'ready' | 'issued'
 export type RequestAction =
   | 'schedule' | 'cancel' | 'receive' | 'diagnose' | 'startDiagnosis' | 'diagnosisReport'
-  | 'estimate' | 'approve' | 'decline' | 'assign' | 'startRepair' | 'pause' | 'resume'
+  | 'estimate' | 'addWorkOrder' | 'approve' | 'decline' | 'assign' | 'startRepair' | 'pause' | 'resume'
   | 'repairReport' | 'ready' | 'rework' | 'release' | 'returnCar' | 'payment' | 'issue'
   | 'recordDecision' | 'moveBay' | 'park'
   | 'dispatchTransfer' | 'completeTransfer' | 'cancelTransfer'
+  | 'classifyLine'
 export type PaymentMethod = 'cash' | 'card' | 'transfer'
 export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose' | 'dispatchTransfer'>
 
@@ -21,6 +22,7 @@ export interface RequestSummary {
   status: Status
   priority: 'normal' | 'urgent'
   appointment: string | null
+  issued_at?: string | null
   eta: string | null
   bay_id?: number | null
   parking_space: number | null
@@ -28,6 +30,7 @@ export interface RequestSummary {
   client_name?: string
   routing_actions?: RoutingAction[]
   transfer?: { id: number; bay_id: number; bay_name: string; mechanic_id: number; mechanic_name: string; instructions: string }
+  work_timer?: { kind: 'diagnosis' | 'repair'; elapsed_ms: number; started_at: number | null }
 }
 
 export interface EstimateLine {
@@ -37,7 +40,18 @@ export interface EstimateLine {
   name: string
   quantity: number
   unit_price?: number
+  unclassified?: number
 }
+
+export interface WorkOrderDocument {
+  version: number
+  title: string
+  status: 'pending' | 'approved' | 'declined'
+  lines: EstimateLine[]
+  total?: number
+}
+
+export type DocumentDecision = Extract<RequestAction, 'approve' | 'decline' | 'recordDecision'>
 
 export interface RequestDetail extends RequestSummary {
   order_id?: number | null
@@ -60,12 +74,14 @@ export interface RequestDetail extends RequestSummary {
   visit_note: string | null
   estimate_version: number | null
   estimate: EstimateLine[]
+  work_orders?: WorkOrderDocument[]
   actions: RequestAction[]
   history: { title: string; note: string | null; created_at: string }[]
-  reports: { id: number; kind: 'diagnosis' | 'repair'; mechanic: string; minutes: number; created_at: string;
+  reports: { id: number; kind: 'diagnosis' | 'repair'; mechanic_id: number; mechanic: string; minutes: number; elapsed_ms: number | null; created_at: string;
     result: string; recommendations: string | null; parts: string | null }[]
   parts_remaining?: Record<number, number>
   stock_usage?: { part_id: number; name: string; quantity: number }[]
+  work_totals?: { id: number; name: string; elapsed_ms: number }[]
   total?: number
   paid?: number
   payments?: { id: number; method: PaymentMethod; created_at: string; amount: number }[]
@@ -96,7 +112,13 @@ export interface ParkingSpace {
 }
 
 export type RequestTracking = Pick<RequestDetail,
-  'id' | 'model' | 'status' | 'appointment' | 'eta' | 'parking_space' | 'parking_reason' | 'parts_expected_date' | 'visit_note'>
+  'id' | 'model' | 'plate' | 'description' | 'status' | 'appointment' | 'eta' | 'parking_space' | 'parking_reason' |
+  'parts_expected_date' | 'visit_note' | 'history'> & {
+  work_orders: (Omit<WorkOrderDocument, 'lines'> & { lines: { name: string; quantity: number; unit_price: number }[] })[]
+  payments: NonNullable<RequestDetail['payments']>
+  total: number
+  paid: number
+}
 
 interface NamedItem { id: number; name: string }
 interface CatalogItem extends NamedItem { price: number }
@@ -122,12 +144,16 @@ export interface WarehouseNeed {
   status: Status
   model: string
   plate: string
-  part_id: number
+  part_id: number | null
+  unclassified_line_id: number | null
   name: string
-  sku: string
+  sku: string | null
   stock: number
   required: number
   issued: number
+  approved_remaining: number
+  pending: number
+  document_titles: string[]
   incoming: number
   can_issue: boolean
 }

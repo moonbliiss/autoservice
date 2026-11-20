@@ -9,7 +9,7 @@ import { OrderSupplyFields, ReceiveSupplyFields, WarehouseIssueFields } from './
 import { Field, SelectField, TextField, type Option } from './fields'
 
 export type FormAction =
-  | { key: RequestAction; row: RequestDetail; destination?: MapLocation }
+  | { key: RequestAction; row: RequestDetail; destination?: MapLocation; documentVersion?: number }
   | { key: 'newRequest'; vehicleId?: number }
   | { key: 'restock' }
   | { key: 'orderSupply'; requestId?: number; partId?: number; quantity?: number }
@@ -52,7 +52,6 @@ function AssignmentFields({ dashboard, row, bayId }: { dashboard: Dashboard; row
 function ReportFields({ repair }: { repair: boolean }) {
   return <>
     <TextField label={repair ? 'Что выполнено и как проверен результат?' : 'Что проверили и какую неисправность нашли?'} name="result" />
-    <Field label="Затрачено минут" name="minutes" type="number" min={1} max={20000} />
     <TextField label="Рекомендации или замечания" name="recommendations" required={false} />
   </>
 }
@@ -102,16 +101,30 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
           defaultValue={row.parts_expected_date ?? ''} />
       </>
     }
-    case 'estimate': return <EstimateFields dashboard={dashboard} row={row} />
-    case 'approve': return <p>Подтвердите смету версии {row.estimate_version} на сумму <strong>{money(row.total ?? 0)}</strong>.</p>
-    case 'decline': return <TextField label="Причина отказа или что нужно изменить" name="note" />
-    case 'recordDecision': return <>
-      <p>Смета версии {row.estimate_version} на сумму <strong>{money(row.total ?? 0)}</strong>.</p>
-      <SelectField label="Решение клиента" name="decision" options={[
-        ['', 'Выберите решение'], ['approve', 'Согласовал смету'], ['decline', 'Отклонил смету'],
-      ]} />
-      <TextField label="Как клиент подтвердил своё решение" name="note" />
+    case 'estimate':
+    case 'addWorkOrder': return <EstimateFields dashboard={dashboard} row={row} additional={key === 'addWorkOrder'} />
+    case 'classifyLine': return <>
+      <SelectField label="Позиция заказ-наряда" name="line_id" options={(row.work_orders ?? [])
+        .filter(document => document.status !== 'declined').flatMap(document => document.lines
+          .filter(line => line.unclassified && line.id !== undefined)
+          .map((line): Option => [line.id!, `${line.name} · ${document.title}`]))} />
+      <SelectField label="Тип позиции" name="line_kind" options={ [['part', 'Запчасть'], ['service', 'Работа']] } />
     </>
+    case 'approve':
+    case 'decline':
+    case 'recordDecision': {
+      const document = row.work_orders?.find(item => item.version === action.documentVersion)
+      return <>
+        {document && <p>{document.title} · <strong>{money(document.total ?? 0)}</strong></p>}
+        {key === 'decline' && <TextField label="Причина отказа или что нужно изменить" name="note" />}
+        {key === 'recordDecision' && <>
+          <SelectField label="Решение клиента" name="decision" options={[
+            ['', 'Выберите решение'], ['approve', 'Согласовал заказ-наряд'], ['decline', 'Отклонил заказ-наряд'],
+          ]} />
+          <TextField label="Как клиент подтвердил своё решение" name="note" />
+        </>}
+      </>
+    }
     case 'startDiagnosis': return <p>Зафиксировать начало диагностики на назначенном посту?</p>
     case 'startRepair': return <p>Зафиксировать начало работы на назначенном посту?</p>
     case 'resume': return <p>Вернуть заказ в работу?</p>

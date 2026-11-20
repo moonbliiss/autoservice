@@ -25,18 +25,18 @@ export function App() {
       {!dashboard ? <p>{busy ? 'Загрузка мастерской…'
         : 'Не удалось подключиться к мастерской. Проверьте запуск сервера и обновите страницу.'}</p>
         : detail ? <RequestDetails row={detail} role={dashboard.user.role}
-          onAction={key => showAction({ key, row: detail })} onBack={() => navigate(section)}
+          onAction={(key, documentVersion) => showAction({ key, row: detail, documentVersion })} onBack={() => navigate(section)}
           onCompleteTransfer={completeTransfer} submitting={submitting} />
         : section === 'overview' ? (dashboard.user.role === 'stockkeeper'
           ? <WarehouseDesk needs={dashboard.warehouse_needs ?? []}
             onIssue={need => showAction({ key: 'warehouseIssue', need })}
-            onOrder={need => showAction({ key: 'orderSupply', requestId: need.request_id, partId: need.part_id,
-              quantity: need.required - need.issued - need.stock - need.incoming })} />
+            onOrder={need => showAction({ key: 'orderSupply', requestId: need.request_id, partId: need.part_id ?? undefined,
+              quantity: need.approved_remaining - need.stock - need.incoming })} />
           : <Overview dashboard={dashboard} onMove={moveOnMap} onOpen={openRequest}
             onNewRequest={onNewRequest} onRequests={() => navigate('requests')} onStock={() => navigate('stock')}
             onCompleteTransfer={completeTransfer} submitting={submitting} />)
-        : section === 'requests' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
-          onSearch={setSearch} filter={filter} onFilter={setFilter} onNewRequest={onNewRequest} />
+        : section === 'requests' || section === 'archive' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
+          onSearch={setSearch} filter={filter} onFilter={setFilter} onNewRequest={onNewRequest} archive={section === 'archive'} />
         : section === 'stock' ? <StockView dashboard={dashboard} onRestock={() => showAction({ key: 'restock' })}
           onOrder={partId => showAction({ key: 'orderSupply', partId })}
           onReceive={supply => showAction({ key: 'receiveSupply', supply })} onOpenRequest={openRequest} />

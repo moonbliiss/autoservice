@@ -4,29 +4,16 @@ import { actionLabels, paymentLabels } from '../../shared/labels'
 import { Button, Heading, Panel } from '../../shared/ui'
 import { ParkingStatus } from './ParkingStatus'
 import { TransferTask } from './TransferTask'
+import { WorkTimer, workDuration } from './WorkTimer'
+import { WorkOrderCard } from './WorkOrderCard'
 import { StatusTag } from './status'
 import './request-details.css'
 
 const actionOrder: RequestAction[] = [
-  'receive', 'schedule', 'cancel', 'diagnose', 'startDiagnosis', 'diagnosisReport', 'estimate',
-  'approve', 'decline', 'recordDecision', 'dispatchTransfer', 'cancelTransfer', 'assign', 'startRepair', 'resume', 'repairReport', 'park', 'moveBay',
+  'receive', 'schedule', 'cancel', 'diagnose', 'startDiagnosis', 'diagnosisReport', 'estimate', 'addWorkOrder', 'classifyLine',
+  'dispatchTransfer', 'cancelTransfer', 'assign', 'startRepair', 'resume', 'repairReport', 'park', 'moveBay',
   'pause', 'release', 'ready', 'rework', 'returnCar', 'payment', 'issue',
 ]
-
-function EstimatePanel({ row, role }: { row: RequestDetail; role: Role }) {
-  if (!row.estimate.length) return null
-  if (role === 'mechanic') return <Panel inset title="Согласованные позиции">
-    {row.estimate.map((line, index) => <p className="split line-item" key={index}><span>{line.name}</span><strong>× {line.quantity}</strong></p>)}
-  </Panel>
-  return <Panel inset title={'Смета · версия ' + row.estimate_version}>
-    {row.estimate.map(line => <p className="split line-item" key={line.id}>
-      <span>{line.name} <small className="meta">× {line.quantity}</small></span>
-      <strong>{money(line.quantity * (line.unit_price ?? 0))}</strong>
-    </p>)}
-    <p className="split line-item"><strong>{row.status === 'declined' ? 'Отклонена клиентом' : 'По смете'}</strong>
-      <strong>{money(row.estimate.reduce((sum, line) => sum + line.quantity * (line.unit_price ?? 0), 0))}</strong></p>
-  </Panel>
-}
 
 function PaymentPanel({ row }: { row: RequestDetail }) {
   if (row.paid === undefined || row.total === undefined || !['ready', 'issued'].includes(row.status)) return null
@@ -40,10 +27,14 @@ function PaymentPanel({ row }: { row: RequestDetail }) {
 }
 
 function ReportsPanel({ row }: { row: RequestDetail }) {
-  if (!row.reports.length) return null
-  return <Panel inset title="Отчёты механиков">{row.reports.map(report => <article className="report" key={report.id}>
+  if (!row.reports.length && !row.work_totals?.length) return null
+  return <Panel inset title={row.work_totals ? 'Итоги выполненных работ' : 'Отчёты механиков'}>
+    {row.work_totals?.map(employee => <p className="split line-item" key={employee.id}>
+      <span>{employee.name}</span><strong>{workDuration(employee.elapsed_ms)}</strong>
+    </p>)}
+    {row.reports.map(report => <article className="report" key={report.id}>
     <h3>{report.kind === 'diagnosis' ? 'Диагностика' : 'Ремонт'}</h3>
-    <p className="meta">{report.mechanic} · {report.minutes} мин · {dateTime(report.created_at)}</p>
+    <p className="meta">{report.mechanic} · {workDuration(report.elapsed_ms ?? report.minutes * 60_000)} · {dateTime(report.created_at)}</p>
     <p className="request-text">{report.result}</p>
     {report.recommendations && <p className="request-text">Рекомендации: {report.recommendations}</p>}
     {report.parts && <p className="request-text">Израсходовано: {report.parts}</p>}
@@ -52,7 +43,7 @@ function ReportsPanel({ row }: { row: RequestDetail }) {
 
 function actionTitle(action: RequestAction, row: RequestDetail) {
   if (action === 'schedule' && row.appointment) return 'Перенести визит'
-  if (action === 'estimate' && row.estimate_version) return 'Пересмотреть смету'
+  if (action === 'estimate' && row.estimate_version) return 'Пересмотреть основной заказ-наряд'
   if (action === 'assign' && row.status === 'repair_assigned') return 'Изменить назначение'
   if (action === 'dispatchTransfer' && row.transfer) return 'Изменить назначение перегона'
   if (action === 'diagnose' && row.status === 'diagnosis_assigned') return 'Изменить назначение диагностики'
@@ -61,32 +52,35 @@ function actionTitle(action: RequestAction, row: RequestDetail) {
 }
 
 export function RequestDetails({ row, role, onAction, onBack, onCompleteTransfer, submitting }: {
-  row: RequestDetail; role: Role; onAction: (action: RequestAction) => void; onBack: () => void;
+  row: RequestDetail; role: Role; onAction: (action: RequestAction, documentVersion?: number) => void; onBack: () => void;
   onCompleteTransfer: (row: RequestDetail) => void; submitting: boolean
 }) {
   const actions = actionOrder.filter(key => row.actions.includes(key))
+  const decisions = (['recordDecision', 'approve', 'decline'] as const).filter(key => row.actions.includes(key))
+  const documents = row.work_orders ?? []
   const facts = [
     ['Пробег', row.mileage !== null ? number(row.mileage) + ' км' : null],
     ['Желаемая дата', dateOnly(row.preferred_date)], ['Визит', dateTime(row.appointment)], ['Ожидаемая готовность', dateTime(row.eta)],
     ['Клиент', row.client_name], ['Телефон', row.client_phone], ['VIN', row.vin], ['Исполнитель', row.mechanic_name],
   ]
   const expected = row.assigned_to_me && (
-    ['diagnosis_assigned', 'diagnosing'].includes(row.status) ? 'В отчёте укажите результаты проверки, причину неисправности, время и рекомендации.'
+    ['diagnosis_assigned', 'diagnosing'].includes(row.status) ? 'В отчёте укажите результаты проверки, причину неисправности и рекомендации.'
       : ['repair_assigned', 'repairing', 'paused'].includes(row.status)
-        ? 'В отчёте укажите выполненные работы, результаты проверки и затраченное время.' : ''
+        ? 'В отчёте укажите выполненные работы и результаты проверки.' : ''
   )
   const needed = new Map(row.estimate.filter(line => line.part_id !== null && (row.parts_remaining?.[line.part_id] ?? 0) > 0)
     .map(line => [line.part_id!, line.name]))
   return <>
     <div className="back"><Button variant="text-button" onClick={onBack}>К списку</Button></div>
     <Heading title={row.model}
-      subtitle={[row.plate, 'Заявка ' + code(row.id), row.order_id ? 'Заказ-наряд ' + code(row.order_id) : null].filter(Boolean).join(' · ')}
+      subtitle={`${row.plate} · Заявка ${code(row.id)}`}
       action={<StatusTag status={row.status} />} />
     <div className="detail-grid">
       <div className="column">
         <TransferTask row={row} busy={submitting}
           onComplete={row.actions.includes('completeTransfer') ? () => onCompleteTransfer(row) : undefined} />
         <ParkingStatus {...row} />
+        <WorkTimer timer={row.work_timer} />
         {role === 'client' && row.visit_note && <Panel inset title="Информация о визите"><p>{row.visit_note}</p></Panel>}
         {row.work_instructions && role !== 'client' && <Panel inset title={row.bay_id ? `Пост ${row.bay_id} · ${row.bay_name}` : 'Последнее задание'}>
           <p className="request-text">{row.work_instructions}</p>
@@ -108,7 +102,17 @@ export function RequestDetails({ row, role, onAction, onBack, onCompleteTransfer
             <Button key={key} variant={index === 0 ? 'primary' : 'secondary'} onClick={() => onAction(key)}>{actionTitle(key, row)}</Button>
           )}</div>}
         </Panel>}
-        <EstimatePanel row={row} role={role} />
+        {documents.length > 0 && <section className="column" aria-label="Заказ-наряды">
+          <h2>Заказ-наряды</h2>
+          {documents.map(document => <WorkOrderCard key={document.version} document={document}
+            actions={document.status === 'pending' && decisions.length > 0 && <div className="actions">
+              {decisions.map(key => <Button key={key} variant="secondary" onClick={() => onAction(key, document.version)}>
+                {actionLabels[key]}
+              </Button>)}
+            </div>} />)}
+          {row.status === 'inspection' && documents.some(document => document.status === 'pending') && role === 'advisor'
+            && <p className="muted">Перед подтверждением готовности зафиксируйте ответ по каждому заказ-наряду.</p>}
+        </section>}
         {role === 'mechanic' && row.assigned_to_me && ['repair_assigned', 'repairing', 'paused'].includes(row.status) && needed.size > 0
           && <Panel inset title="Получить у запчастиста">
             {[...needed].map(([id, name]) => <p className="split line-item" key={id}>

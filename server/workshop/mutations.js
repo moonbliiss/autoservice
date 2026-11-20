@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { availableActions, transitions } from './rules.js';
 import { date, integer, requireValue, str } from './validation.js';
 
-export function createWorkshopMutations({ run, get, transaction }, queries, account) {
+export function createWorkshopMutations({ run, get, all, transaction }, queries, account, workTime) {
   const { amounts, details, getRequest, permitted } = queries;
 
   function addHistory(id, user, title, note = null, isPublic = 1) {
@@ -75,6 +75,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     const { mechanicId, bayId, bayName } = checkAssignment(row, input);
     updateOrder(row, status, { mechanic_id: mechanicId, bay_id: bayId,
       work_instructions: str(input.instructions, 'Задача и ожидаемый результат'), pause_reason: null });
+    workTime.stop(row.order_id);
     if (row.parking_space) run('DELETE FROM parking_assignments WHERE order_id=?', row.order_id);
     return `Пост ${bayId} · ${bayName}.`;
   }
@@ -102,33 +103,50 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
       ON CONFLICT(order_id) DO UPDATE SET space_id=excluded.space_id, reason=excluded.reason, expected_date=excluded.expected_date`,
     row.order_id, space, reason, expected);
     run('UPDATE orders SET bay_id=NULL WHERE id=?', row.order_id);
+    workTime.stop(row.order_id);
     return `Место ${space}. ${reason}${expected ? ` · Ожидаемая поставка: ${expected}` : ''}`;
   }
 
   function saveReport(user, row, input, kind) {
     const result = str(input.result, 'Результат работы');
     const recommendations = str(input.recommendations, 'Рекомендации', { optional: true });
-    const minutes = integer(input.minutes, 'Затрачено минут', 1, 20000);
-    run('INSERT INTO work_reports(order_id,mechanic_id,kind,result,recommendations,minutes) VALUES (?,?,?,?,?,?)',
-      row.order_id, user.id, kind, result, recommendations, minutes);
+    workTime.report(row, user, kind, result, recommendations);
   }
 
-  function saveEstimate(row, input) {
-    requireValue(Array.isArray(input.lines) && input.lines.length > 0 && input.lines.length <= 20, 'Добавьте от 1 до 20 позиций сметы.');
-    const version = row.estimate_version + 1;
+  function registerEstimatePart(name, price) {
+    const normalized = name.toLocaleLowerCase('ru');
+    const matches = all('SELECT id,name FROM parts').filter(row => row.name.toLocaleLowerCase('ru') === normalized);
+    if (matches.length === 1) return matches[0].id;
+    return run('INSERT INTO parts(sku,name,stock,price) VALUES (?,?,0,?)',
+      'AUTO-' + randomBytes(6).toString('hex').toUpperCase(), name, price).lastInsertRowid;
+  }
+
+  function saveDocument(row, input, additional) {
+    requireValue(Array.isArray(input.lines) && input.lines.length > 0 && input.lines.length <= 20,
+      'Добавьте от 1 до 20 позиций заказ-наряда.');
+    const title = str(input.title, 'Название заказ-наряда', { optional: !additional, limit: 100 }) ?? 'Основной заказ-наряд';
+    const { version } = get('SELECT COALESCE(MAX(version),0)+1 AS version FROM estimate_lines WHERE order_id=?', row.order_id);
+    run("INSERT INTO work_order_documents(order_id,version,title,status) VALUES (?,?,?,'pending')", row.order_id, version, title);
     for (const line of input.lines) {
-      requireValue(line && ['service', 'part', 'custom'].includes(line.kind), 'Выберите тип позиции сметы.');
+      requireValue(line && ['service', 'part', 'custom', 'custom_part'].includes(line.kind), 'Выберите тип позиции заказ-наряда.');
+      const catalogLine = line.kind === 'service' || line.kind === 'part';
       const table = line.kind === 'part' ? 'parts' : 'services';
-      const catalog = line.kind === 'custom' ? null : get(`SELECT * FROM ${table} WHERE id=?`, integer(line.catalog_id, 'Позиция'));
-      requireValue(line.kind === 'custom' || catalog, 'Позиция каталога не найдена.');
+      const catalog = catalogLine ? get(`SELECT * FROM ${table} WHERE id=?`, integer(line.catalog_id, 'Позиция')) : null;
+      requireValue(!catalogLine || catalog, 'Позиция каталога не найдена.');
       const name = catalog?.name ?? str(line.name, 'Название позиции', { limit: 100 });
       const quantity = integer(line.quantity, 'Количество', 1, 100);
       const price = integer(line.price, 'Цена', 0, 1_000_000);
-      run(`INSERT INTO estimate_lines(order_id,version,service_id,part_id,name,quantity,unit_price)
-        VALUES (?,?,?,?,?,?,?)`, row.order_id, version, line.kind === 'service' ? catalog.id : null,
-      line.kind === 'part' ? catalog.id : null, name, quantity, price);
+      const partId = line.kind === 'part' ? catalog.id : line.kind === 'custom_part' ? registerEstimatePart(name, price) : null;
+      const inserted = run(`INSERT INTO estimate_lines(order_id,version,service_id,part_id,name,quantity,unit_price)
+        VALUES (?,?,?,?,?,?,?)`, row.order_id, version, line.kind === 'service' ? catalog.id : null, partId, name, quantity, price);
+      if (line.kind === 'custom') run('INSERT INTO estimate_manual_services(line_id) VALUES (?)', inserted.lastInsertRowid);
     }
-    updateOrder(row, 'awaiting_approval', { estimate_version: version, eta: date(input.eta, 'Ожидаемая готовность', true, true) });
+    if (!additional) {
+      run('DELETE FROM work_order_documents WHERE order_id=? AND version=?', row.order_id, row.estimate_version);
+      updateOrder(row, 'awaiting_approval', { estimate_version: version, eta: date(input.eta, 'Ожидаемая готовность', true, true) });
+    } else if (row.status === 'declined') updateOrder(row, 'awaiting_approval');
+    const message = str(input.note, 'Сообщение клиенту', { optional: true });
+    return message ? `${title}. ${message}` : title;
   }
 
   function action(user, id, key, input) {
@@ -167,27 +185,55 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           break;
         }
         case 'diagnose': note = assignOrder(row, input, 'diagnosis_assigned'); break;
-        case 'startDiagnosis': updateOrder(row, 'diagnosing'); break;
+        case 'startDiagnosis':
+          updateOrder(row, 'diagnosing');
+          workTime.start(row, user, 'diagnosis');
+          break;
         case 'diagnosisReport':
           saveReport(user, row, input, 'diagnosis');
           updateOrder(row, 'awaiting_estimate', { bay_id: null });
           break;
         case 'estimate':
-          requireValue(integer(input.version, 'Версия сметы', 0) === row.estimate_version, 'Смета уже изменена. Откройте её заново.', 409);
-          saveEstimate(row, input);
-          note = str(input.note, 'Сообщение клиенту', { optional: true });
+          requireValue(integer(input.version, 'Версия заказ-наряда', 0) === row.estimate_version,
+            'Заказ-наряд уже изменён. Откройте его заново.', 409);
+          note = saveDocument(row, input, false);
           break;
+        case 'addWorkOrder':
+          note = saveDocument(row, input, true);
+          break;
+        case 'classifyLine': {
+          const lineId = integer(input.line_id, 'Позиция заказ-наряда');
+          const line = money.work_orders.filter(document => document.status !== 'declined')
+            .flatMap(document => document.lines).find(item => item.id === lineId && item.unclassified);
+          requireValue(line, 'Позиция уже уточнена или заказ-наряд изменился.', 409);
+          requireValue(['part', 'service'].includes(input.line_kind), 'Укажите, запчасть это или работа.');
+          if (input.line_kind === 'part') {
+            run('UPDATE estimate_lines SET part_id=? WHERE id=?', registerEstimatePart(line.name, line.unit_price), line.id);
+          } else run('INSERT INTO estimate_manual_services(line_id) VALUES (?)', line.id);
+          note = line.name + (input.line_kind === 'part' ? ' · запчасть' : ' · работа');
+          break;
+        }
         case 'approve':
         case 'decline':
         case 'recordDecision': {
-          requireValue(integer(input.version, 'Версия сметы') === row.estimate_version, 'Смета уже изменена. Проверьте новую версию.', 409);
+          const version = integer(input.version, 'Версия заказ-наряда');
+          const document = money.work_orders.find(item => item.version === version && item.status === 'pending');
+          requireValue(document, 'Заказ-наряд уже изменён или рассмотрен. Обновите заявку.', 409);
           const decision = key === 'recordDecision' ? input.decision : key;
           requireValue(decision === 'approve' || decision === 'decline', 'Выберите решение клиента.');
+          note = document.title;
           if (key === 'recordDecision') {
             const confirmation = str(input.note, 'Как клиент подтвердил своё решение');
-            note = `${decision === 'approve' ? 'Смета согласована' : 'Клиент отклонил смету'}. ${confirmation}`;
-          } else if (decision === 'decline') note = str(input.note, 'Причина отказа');
-          updateOrder(row, decision === 'approve' ? 'approved' : 'declined');
+            note += `${decision === 'approve' ? ' · согласован' : ' · отклонён'}. ${confirmation}`;
+          } else if (decision === 'decline') note += '. ' + str(input.note, 'Причина отказа');
+          const status = decision === 'approve' ? 'approved' : 'declined';
+          run('UPDATE work_order_documents SET status=? WHERE order_id=? AND version=?', status, row.order_id, version);
+          if (row.work_status === 'awaiting_approval') {
+            const pending = money.work_orders.some(item => item.version !== version && item.status === 'pending');
+            updateOrder(row, decision === 'decline' && pending ? 'awaiting_approval' : status);
+          } else if (row.work_status === 'inspection' && decision === 'approve') {
+            updateOrder(row, 'repair_assigned', { inspection_note: null });
+          }
           break;
         }
         case 'assign': note = assignOrder(row, input, 'repair_assigned'); break;
@@ -222,10 +268,14 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
         }
         case 'park': note = parkOrder(row, input); break;
         case 'startRepair':
-        case 'resume': updateOrder(row, 'repairing', { pause_reason: null }); break;
+        case 'resume':
+          updateOrder(row, 'repairing', { pause_reason: null });
+          workTime.start(row, user, 'repair');
+          break;
         case 'pause': {
           const reason = str(input.note, 'Причина паузы');
           updateOrder(row, 'paused', { pause_reason: reason });
+          workTime.stop(row.order_id);
           addHistory(id, user, 'Внутреннее примечание о паузе', reason, 0);
           break;
         }
@@ -250,7 +300,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           break;
         case 'returnCar':
           note = str(input.note, 'Причина возврата');
-          updateOrder(row, 'ready', { bay_id: null, estimate_version: 0 });
+          updateOrder(row, 'ready', { bay_id: null });
           break;
         case 'payment': {
           const amount = integer(input.amount, 'Сумма', 1, money.total - money.paid);
@@ -264,7 +314,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           updateOrder(row, 'issued', { bay_id: null });
           break;
       }
-      addHistory(id, user, transitions[key][2], note, ['release', 'dispatchTransfer', 'cancelTransfer'].includes(key) ? 0 : 1);
+      addHistory(id, user, transitions[key][2], note, ['release', 'dispatchTransfer', 'cancelTransfer', 'classifyLine'].includes(key) ? 0 : 1);
       return details(user, id);
     });
   }

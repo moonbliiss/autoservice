@@ -1,1 +1,10 @@
-.tracking-page { max-width: 730px; margin: 0 auto; padding: clamp(18px, 5vw, 42px); }
+.tracking-page { max-width: 1060px; margin: 0 auto; padding: clamp(18px, 5vw, 42px); }
+.tracking-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.tracking-history { list-style: none; padding-left: 12px; margin: 14px 0 0; }
+.tracking-history li { position: relative; border-left: 2px solid #d9e5d9; padding: 0 0 14px 12px; }
+.tracking-history li:last-child { padding-bottom: 0; }
+.tracking-history li::before { position: absolute; left: -5px; top: 7px; content: ''; width: 8px; height: 8px; border-radius: 50%; background: #66836a; }
+.tracking-history time { display: block; font-size: .84rem; }
+.tracking-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tracking-error { color: #8d3020; margin-bottom: 12px; }
+@media (max-width: 720px) { .tracking-grid { grid-template-columns: 1fr; } }

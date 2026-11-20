@@ -116,6 +116,45 @@ CREATE TABLE IF NOT EXISTS work_reports (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS estimate_manual_services (
+  line_id INTEGER PRIMARY KEY REFERENCES estimate_lines(id)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS work_order_documents (
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  version INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending','approved','declined')),
+  PRIMARY KEY (order_id,version)
+) STRICT;
+
+INSERT OR IGNORE INTO work_order_documents(order_id,version,title,status)
+SELECT id,estimate_version,'Основной заказ-наряд',
+  CASE status WHEN 'awaiting_approval' THEN 'pending' WHEN 'declined' THEN 'declined' ELSE 'approved' END
+FROM orders WHERE estimate_version>0;
+
+CREATE INDEX IF NOT EXISTS estimate_lines_by_document ON estimate_lines(order_id,version);
+
+CREATE VIEW IF NOT EXISTS work_order_document_lines AS
+SELECT e.*,d.status AS decision,d.title AS document_title,
+  CAST(e.service_id IS NULL AND e.part_id IS NULL AND m.line_id IS NULL AS INTEGER) AS unclassified
+FROM work_order_documents d JOIN estimate_lines e ON e.order_id=d.order_id AND e.version=d.version
+LEFT JOIN estimate_manual_services m ON m.line_id=e.id;
+
+CREATE TABLE IF NOT EXISTS work_periods (
+  id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  mechanic_id INTEGER NOT NULL REFERENCES accounts(id),
+  kind TEXT NOT NULL CHECK (kind IN ('diagnosis','repair')),
+  started_at INTEGER NOT NULL,
+  stopped_at INTEGER CHECK (stopped_at >= started_at),
+  report_id INTEGER REFERENCES work_reports(id)
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS running_work_order ON work_periods(order_id) WHERE stopped_at IS NULL;
+CREATE INDEX IF NOT EXISTS work_periods_by_report ON work_periods(report_id);
+CREATE INDEX IF NOT EXISTS work_periods_by_order ON work_periods(order_id,mechanic_id,kind);
+
 CREATE TABLE IF NOT EXISTS stock_movements (
   id INTEGER PRIMARY KEY,
   part_id INTEGER NOT NULL REFERENCES parts(id),
@@ -175,3 +214,5 @@ CREATE TABLE IF NOT EXISTS history (
   is_public INTEGER NOT NULL DEFAULT 1 CHECK (is_public IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) STRICT;
+
+CREATE INDEX IF NOT EXISTS history_by_request ON history(request_id,id);

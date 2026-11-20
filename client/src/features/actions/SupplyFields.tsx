@@ -35,11 +35,11 @@ export function OrderSupplyFields({ dashboard, requestId, partId, quantity = 1 }
 }
 
 export function WarehouseIssueFields({ need }: { need: WarehouseNeed }) {
-  const available = Math.min(need.required - need.issued, need.stock)
+  const available = Math.min(need.approved_remaining, need.stock)
   return <>
     <p><strong>{need.name}</strong><br />{code(need.request_id)} · {need.model} · {need.mechanic}</p>
     <input type="hidden" name="request_id" value={need.request_id} />
-    <input type="hidden" name="part_id" value={need.part_id} />
+    <input type="hidden" name="part_id" value={need.part_id ?? ''} />
     <Field label="Количество к выдаче" name="quantity" type="number" defaultValue={available} min={1} max={available} />
   </>
 }

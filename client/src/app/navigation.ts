@@ -1,12 +1,12 @@
 import type { Dashboard, Profile, Role } from '../api/types'
 
-export type Section = 'overview' | 'requests' | 'stock' | 'cars' | 'directory'
+export type Section = 'overview' | 'requests' | 'archive' | 'stock' | 'cars' | 'directory'
 export const navigation: Record<Role, [Section, string, string][]> = {
-  advisor: [['overview', '▦', 'Обзор'], ['requests', '▤', 'Заказы и заявки'], ['stock', '▥', 'Склад']],
+  advisor: [['overview', '▦', 'Обзор'], ['requests', '▤', 'Заказы и заявки'], ['archive', '▣', 'Архив'], ['stock', '▥', 'Склад']],
   mechanic: [['overview', '▦', 'Моя смена'], ['requests', '▤', 'Мои задачи']],
   client: [['overview', '▤', 'Мои заявки'], ['cars', '▥', 'Автомобили']],
   stockkeeper: [['overview', '▤', 'Потребность в деталях'], ['stock', '▥', 'Склад и поставки']],
-  manager: [['overview', '▦', 'Обзор'], ['requests', '▤', 'Все заявки'], ['stock', '▥', 'Склад'], ['directory', '◉', 'Справочник']],
+  manager: [['overview', '▦', 'Обзор'], ['requests', '▤', 'Все заявки'], ['archive', '▣', 'Архив'], ['stock', '▥', 'Склад'], ['directory', '◉', 'Справочник']],
 }
 
 export const profiles: { id?: number; key: Profile; label: string }[] = [
