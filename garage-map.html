@@ -4,19 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3D-карта цеха</title>
-  <link rel="stylesheet" href="./styles.css">
-  <script defer src="./garage.js"></script>
 </head>
 <body class="embedded-map">
-  <section class="scene" aria-label="Интерактивная 3D-карта">
-    <canvas id="garage" tabindex="0" aria-label="3D-модель гаража. Клавиши со стрелками поворачивают камеру."></canvas>
-    <div id="markers" class="markers" aria-label="Выбор поста"></div>
-    <div class="scene-help">Потяните, чтобы повернуть</div>
-    <div class="camera" aria-label="Управление камерой">
-      <button id="zoom-out" type="button" aria-label="Отдалить" title="Отдалить">−</button>
-      <button id="zoom-in" type="button" aria-label="Приблизить" title="Приблизить">+</button>
-      <button id="reset-view" type="button" aria-label="Сбросить вид" title="Сбросить вид">⌂</button>
-    </div>
-  </section>
+  <div id="root"></div>
+  <script type="module" src="/src/garagePage.tsx"></script>
 </body>
 </html>

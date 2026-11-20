@@ -5,41 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Мастерская — заявки, заказ-наряды и интерактивная карта автосервиса.">
   <title>Мастерская — Автосервис</title>
-  <link rel="stylesheet" href="./app.css">
-  <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <div class="identity"><span class="logo" aria-hidden="true"><i></i><i></i><i></i></span><span>Мастерская<small>Автосервис</small></span></div>
-      <nav id="navigation" aria-label="Разделы приложения"></nav>
-      <div class="sidebar-foot"><span class="signal"></span> Локальный деморежим</div>
-    </aside>
-    <div class="workspace">
-      <header class="top">
-        <span id="location-label">Рабочее пространство</span>
-        <label class="profile"><span id="avatar" class="avatar" aria-hidden="true">АМ</span>
-          <span class="profile-label"><span id="profile-name">Анна Морозова</span>
-          <select id="profile" aria-label="Демонстрационный профиль">
-            <option value="advisor">Мастер-приёмщик</option>
-            <option value="mechanic">Механик · Илья</option>
-            <option value="mechanic2">Механик · Павел</option>
-            <option value="client">Клиент · Алексей</option>
-            <option value="client2">Клиент · Мария</option>
-          </select></span>
-        </label>
-      </header>
-      <p id="notice" class="notice" role="status" hidden></p>
-      <main id="content" aria-busy="true"><p>Загрузка мастерской…</p></main>
-    </div>
-  </div>
-  <dialog id="dialog" aria-labelledby="dialog-title">
-    <form id="form">
-      <div class="dialog-head"><h2 id="dialog-title"></h2><button class="close" type="button" data-command="close" aria-label="Закрыть">×</button></div>
-      <div id="fields"></div>
-      <p id="form-error" class="form-error" role="alert" hidden></p>
-      <div class="dialog-actions"><button class="secondary" type="button" data-command="close">Отмена</button><button id="submit" class="primary" type="submit">Сохранить</button></div>
-    </form>
-  </dialog>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

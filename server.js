@@ -8,15 +8,15 @@ const port = Number(process.env.PORT || 8765);
 mkdirSync(new URL('./data/', import.meta.url), { recursive: true });
 const workshop = openWorkshop(process.env.WORKSHOP_DB || fileURLToPath(new URL('./data/workshop.sqlite', import.meta.url)));
 const sessions = new Map();
-const staticFiles = {
-  '/': ['index.html', 'text/html'],
-  '/index.html': ['index.html', 'text/html'],
-  '/garage-map.html': ['garage-map.html', 'text/html'],
-  '/garage.js': ['garage.js', 'text/javascript'],
-  '/styles.css': ['styles.css', 'text/css'],
-  '/app.css': ['app.css', 'text/css'],
-  '/app.js': ['app.js', 'text/javascript'],
-};
+const dist = new URL('./dist/', import.meta.url);
+const assetTypes = { js: 'text/javascript', css: 'text/css' };
+
+function staticFile(path) {
+  if (path === '/' || path === '/index.html') return ['index.html', 'text/html'];
+  if (path === '/garage-map.html') return ['garage-map.html', 'text/html'];
+  const asset = /^\/(assets\/[\w-]+\.(js|css))$/.exec(path);
+  return asset && [asset[1], assetTypes[asset[2]]];
+}
 
 function response(res, status, payload, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
@@ -54,9 +54,16 @@ const server = createServer(async (req, res) => {
   if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return response(res, 400, { error: 'Используйте локальный адрес приложения.' });
   try {
     const path = new URL(req.url, `http://${host}`).pathname;
-    if (req.method === 'GET' && Object.hasOwn(staticFiles, path)) {
-      const [file, mime] = staticFiles[path];
-      const content = readFileSync(new URL(file, import.meta.url));
+    const page = req.method === 'GET' && staticFile(path);
+    if (page) {
+      const [file, mime] = page;
+      let content;
+      try {
+        content = readFileSync(new URL(file, dist));
+      } catch (error) {
+        if (error.code === 'ENOENT') fail(404, 'Файл приложения не найден. Запустите npm start.');
+        throw error;
+      }
       res.writeHead(200, { 'Content-Type': `${mime}; charset=utf-8`, 'Cache-Control': 'no-cache' });
       return res.end(content);
     }

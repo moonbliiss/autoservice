@@ -1,0 +1,22 @@
+.scene {
+  position: relative; overflow: hidden; isolation: isolate; width: 100%; height: min(45vw, 410px); min-height: 290px;
+  background: radial-gradient(ellipse at 50% 47%, #f3f0e6 5%, #e5e2d7 88%);
+}
+.scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.scene canvas:active { cursor: grabbing; }
+.scene canvas:focus-visible { outline: 2px solid #a64121; outline-offset: -4px; }
+.scene-help, .camera { position: absolute; z-index: 2; }
+.scene-help { left: 19px; top: 13px; font-size: .8125rem; color: #53574e; pointer-events: none; }
+.camera { right: 15px; bottom: 15px; display: flex; border-radius: 10px; background: #fffdf7; border: 1px solid #dfdcd1; }
+.camera button { width: 39px; height: 38px; border: 0; color: inherit; background: none; font-size: 1.23rem; }
+.camera button + button { border-left: 1px solid #e8e5dc; }
+.camera button:hover { background: #f1ede3; }
+.markers { position: absolute; inset: 0; pointer-events: none; }
+.marker { position: absolute; pointer-events: auto; transform: translate(-50%, -100%); min-height: 32px; border-radius: 8px; padding: 5px 9px; border: 1px solid #ebe4d4; background: #fffdf7; color: #35382f; box-shadow: 0 3px 10px #2228; font-size: .875rem; font-weight: 730; white-space: nowrap; }
+.marker::after { position: absolute; top: calc(100% - 3px); left: calc(50% - 3px); width: 6px; height: 6px; content: ""; background: inherit; transform: rotate(45deg); }
+.marker[aria-pressed="true"] { background: #313831; border-color: #313831; color: #fffdf7; z-index: 1; }
+.scene [hidden] { display: none; }
+.embedded-map { margin: 0; color: #252725; font: 15px "Segoe UI", Arial, sans-serif; }
+.embedded-map button { font-family: inherit; cursor: pointer; }
+.embedded-map button:focus-visible { outline: 2px solid #a64121; outline-offset: 3px; }
+.embedded-map .scene { height: 100dvh; min-height: 0; }
