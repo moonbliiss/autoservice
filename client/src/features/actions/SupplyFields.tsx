@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Dashboard, PartSupply, WarehouseNeed } from '../../api/types'
 import { code } from '../../shared/format'
-import { Field, SelectField, type Option } from './fields'
+import { Field, SelectField, TextField, type Option } from './fields'
 
 export function OrderSupplyFields({ dashboard, requestId, partId, quantity = 1 }: {
   dashboard: Dashboard; requestId?: number; partId?: number; quantity?: number
@@ -15,13 +15,7 @@ export function OrderSupplyFields({ dashboard, requestId, partId, quantity = 1 }
       ...(dashboard.parts ?? []).map((item): Option => [item.id, `${item.name} · ${item.sku} · Остаток: ${item.stock}`]),
       ['new', 'Добавить новую запчасть'],
     ]} />
-    {part === 'new' && <>
-      <div className="fields-row">
-        <Field label="Артикул" name="sku" maxLength={40} />
-        <Field label="Название запчасти" name="name" maxLength={100} />
-      </div>
-      <Field label="Цена за единицу, ₽" name="price" type="number" min={0} max={1000000} />
-    </>}
+    {part === 'new' && <PartFields />}
     <Field label="Поставщик" name="supplier" maxLength={120} />
     <div className="fields-row">
       <Field label="Количество" name="quantity" type="number" defaultValue={quantity} min={1} max={10000} />
@@ -31,6 +25,27 @@ export function OrderSupplyFields({ dashboard, requestId, partId, quantity = 1 }
       options={ [['', 'Пополнение склада'], ...[...requests.values()].map((need): Option => [
         need.request_id, `${code(need.request_id)} · ${need.model} · ${need.plate}`,
       ])] } />
+  </>
+}
+
+function PartFields() {
+  return <>
+    <div className="fields-row">
+      <Field label="Артикул производителя" name="sku" maxLength={40} />
+      <Field label="Название запчасти" name="name" maxLength={100} />
+    </div>
+    <Field label="Цена за единицу, ₽" name="price" type="number" min={0} max={1000000} />
+  </>
+}
+
+export function RestockFields({ dashboard }: { dashboard: Dashboard }) {
+  const options: Option[] = (dashboard.parts ?? []).map(part => [part.id, `${part.name} · ${part.sku}`])
+  const [part, setPart] = useState(String(options[0]?.[0] ?? 'new'))
+  return <>
+    <SelectField label="Запчасть" name="part_id" value={part} onChange={setPart} options={[...options, ['new', 'Добавить новую запчасть']]} />
+    {part === 'new' && <PartFields />}
+    <Field label="Количество" name="quantity" type="number" defaultValue={1} min={1} max={10000} />
+    <TextField label="Поставщик или номер накладной" name="note" />
   </>
 }
 

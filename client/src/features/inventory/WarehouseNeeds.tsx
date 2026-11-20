@@ -35,7 +35,7 @@ export function WarehouseNeeds({ needs, onIssue, onOrder, onOpen }: {
             const shortage = need.approved_remaining - need.stock - need.incoming
             return { key: need.part_id ?? 'line-' + need.unclassified_line_id, cells: [
               <><strong>{need.name}</strong><br /><span className="meta">{need.document_titles.join(' · ')}</span><br />
-                <span className="meta">{need.sku?.startsWith('AUTO-') ? 'Добавлена вручную'
+                <span className="meta">{/^AUTO-[0-9A-F]{12}$/i.test(need.sku ?? '') ? 'Требуется артикул производителя'
                   : need.sku ?? 'Тип позиции требует уточнения'}</span></>,
               need.approved_remaining || '—', need.pending || '—',
               need.part_id === null ? '—' : need.stock || <strong>0 · Нет в наличии</strong>, need.incoming || '—',

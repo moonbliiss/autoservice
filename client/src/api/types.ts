@@ -37,6 +37,7 @@ export interface RequestSummary {
   assigned_to_me?: boolean
   client_name?: string
   routing_actions?: RoutingAction[]
+  map_actions?: RequestAction[]
   transfer?: { id: number; bay_id: number; bay_name: string; mechanic_id: number; mechanic_name: string; instructions: string }
   work_timer?: { kind: 'diagnosis' | 'repair'; elapsed_ms: number; started_at: number | null }
 }
@@ -186,7 +187,7 @@ export interface Dashboard {
 
 export interface Submission {
   version?: number | null
-  lines?: { kind: string; catalog_id?: string; name: string; quantity: string; price: string }[]
+  lines?: { kind: string; catalog_id?: string; name: string; sku?: string; quantity: string; price: string }[]
   parts?: { id: string; quantity: FormDataEntryValue }[]
   [field: string]: unknown
 }

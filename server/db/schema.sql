@@ -81,6 +81,10 @@ CREATE TABLE IF NOT EXISTS parking_assignments (
   expected_date TEXT
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS estimate_parking (
+  order_id INTEGER PRIMARY KEY REFERENCES parking_assignments(order_id) ON DELETE CASCADE
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS parking_transfers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id INTEGER NOT NULL UNIQUE REFERENCES parking_assignments(order_id) ON DELETE CASCADE,

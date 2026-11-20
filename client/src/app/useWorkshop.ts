@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, createRequest, errorMessage, getDashboard, getRequest, issueStock, orderSupply, receiveSupply, restock, savePresence, selectProfile, updateRequest } from '../api/client'
-import type { Dashboard, PresenceStatus, Profile, RequestDetail, RequestSummary, Submission } from '../api/types'
+import { ApiError, createRequest, errorMessage, getDashboard, getRequest, issueStock, orderSupply, receiveSupply, restock, savePresence, selectProfile, setPartNumber, updateRequest } from '../api/client'
+import type { Dashboard, PresenceStatus, Profile, RequestAction, RequestDetail, RequestSummary, Submission } from '../api/types'
 import type { FormAction } from '../features/actions/ActionFields'
+import type { MapLocation } from '../features/garage/mapLayout'
 import type { MoveRequest } from '../features/garage/WorkshopFloor'
 import { profileKey, type Section } from './navigation'
 
@@ -188,35 +189,56 @@ export function useWorkshop() {
     setAction(next)
   }
 
-  const moveOnMap: MoveRequest = async (id, key, destination) => {
+  async function confirmReady(id: number) {
     if (locked.current || action) return
-    const before = ++revision.current
-    if (key === 'park' || key === 'arrivalPark' || key === 'leaveArrival') {
-      locked.current = true
-      setSubmitting(true)
-      try {
-        await updateRequest(id, key, { [key === 'park' ? 'parking_space' : 'arrival_space']: destination.id })
-        const message = key === 'park' ? `Автомобиль переведён на место ${destination.id}. Ожидает запчасти.`
-          : key === 'arrivalPark' ? `Приезд отмечен. Клиентская стоянка, место ${destination.id}.` : 'Место на клиентской стоянке освобождено.'
-        await refreshDashboard(message)
-      } catch (error) {
-        await refreshDashboard(errorMessage(error), true)
-      } finally {
-        locked.current = false
-        setSubmitting(false)
-      }
-      return
+    ++revision.current
+    locked.current = true
+    setSubmitting(true)
+    try {
+      const updated = await updateRequest(id, 'ready', {})
+      if (detail?.id === id) setDetail(updated)
+      await refreshDashboard('Автомобиль готов к выдаче.')
+    } catch (error) {
+      await refreshDashboard(errorMessage(error), true)
+    } finally {
+      locked.current = false
+      setSubmitting(false)
     }
+  }
+
+  async function openMapAction(id: number, key: RequestAction, destination?: MapLocation) {
+    if (locked.current || action) return
+    if (key === 'ready') return confirmReady(id)
+    const before = ++revision.current
     try {
       const row = await getRequest(id)
       if (before !== revision.current) return
       if (!row.actions.includes(key)) {
-        notify('Перемещение больше недоступно. Проверьте текущий статус заявки.', true)
+        notify('Действие больше недоступно. Проверьте текущий статус заявки.', true)
         return
       }
-      showAction({ key, row, destination })
+      showAction({ key, row, destination, fromMap: true })
     } catch (error) {
       if (before === revision.current) notify(errorMessage(error), true)
+    }
+  }
+
+  const moveOnMap: MoveRequest = async (id, key, destination) => {
+    if (locked.current || action) return
+    if (key !== 'park' && key !== 'arrivalPark' && key !== 'leaveArrival') return openMapAction(id, key, destination)
+    ++revision.current
+    locked.current = true
+    setSubmitting(true)
+    try {
+      const updated = await updateRequest(id, key, { [key === 'park' ? 'parking_space' : 'arrival_space']: destination.id })
+      const message = key === 'park' ? `Автомобиль переведён на место ${destination.id}.${updated.status === 'waiting_parts' ? ' Ожидает запчасти.' : ''}`
+        : key === 'arrivalPark' ? `Приезд отмечен. Клиентская стоянка, место ${destination.id}.` : 'Место на клиентской стоянке освобождено.'
+      await refreshDashboard(message)
+    } catch (error) {
+      await refreshDashboard(errorMessage(error), true)
+    } finally {
+      locked.current = false
+      setSubmitting(false)
     }
   }
 
@@ -257,13 +279,14 @@ export function useWorkshop() {
     const { key } = action
     try {
       if (key === 'restock') await restock(data)
+      else if (key === 'setPartNumber') await setPartNumber(action.part.id, data)
       else if (key === 'warehouseIssue') await issueStock(data)
       else if (key === 'orderSupply') await orderSupply(data)
       else if (key === 'receiveSupply') await receiveSupply(action.supply.id, data)
       else if (key === 'newRequest') setDetail(await createRequest(data))
       else {
         const updated = await updateRequest(action.row.id, key, data)
-        if (!action.destination) setDetail(updated)
+        if (!action.fromMap) setDetail(updated)
         if (key === 'issue') {
           setSection('archive')
           setSearch('')
@@ -295,6 +318,6 @@ export function useWorkshop() {
   return {
     dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction: () => setAction(null), formError, notice, busy, submitting,
-    changeProfile, changePresence, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
+    changeProfile, changePresence, navigate, openRequest, showAction, submitAction, moveOnMap, openMapAction, confirmReady, completeTransfer,
   }
 }

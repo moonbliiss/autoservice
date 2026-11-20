@@ -43,3 +43,5 @@ th { color: var(--muted); font-size: .85rem; font-weight: 650; background: #f8f9
 .presence-dot { display: inline-block; flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #858c89; }
 .presence-dot[data-status="present"] { background: #3d8659; }
 .presence-dot[data-status="away"] { background: #b16c24; }
+
+.stock-part-actions { display: flex; flex-wrap: wrap; gap: 8px; }

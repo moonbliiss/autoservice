@@ -1,12 +1,13 @@
-import type { Dashboard, PartSupply } from '../../api/types'
+import type { Dashboard, Part, PartSupply } from '../../api/types'
 import { code, dateOnly, dateTime, money } from '../../shared/format'
 import { Button, Heading, Panel, Table } from '../../shared/ui'
 import { WarehouseNeeds } from './WarehouseNeeds'
 
-export function StockView({ dashboard, onRestock, onOrder, onReceive, onOpenRequest }: {
+export function StockView({ dashboard, onRestock, onOrder, onReceive, onEditPart, onOpenRequest }: {
   dashboard: Dashboard
   onRestock: () => void
   onOrder: (partId?: number) => void
+  onEditPart: (part: Part) => void
   onReceive: (supply: PartSupply) => void
   onOpenRequest: (id: number) => void
 }) {
@@ -33,7 +34,10 @@ export function StockView({ dashboard, onRestock, onOrder, onReceive, onOpenRequ
       <Panel title="Остатки"><Table headings={['Артикул', 'Запчасть', 'В наличии', 'Цена', ...(canManage ? [''] : [])]}
         rows={(dashboard.parts ?? []).map(part => ({ key: part.id, cells: [
           part.sku, part.name, part.stock, money(part.price ?? 0),
-          ...(canManage ? [<Button variant="text-button" onClick={() => onOrder(part.id)}>Заказать</Button>] : []),
+          ...(canManage ? [<div className="stock-part-actions">
+            <Button variant="text-button" onClick={() => onOrder(part.id)}>Заказать</Button>
+            <Button variant="text-button" onClick={() => onEditPart(part)}>Изменить артикул</Button>
+          </div>] : []),
         ] }))} /></Panel>
       {showJournal && <Panel title="Принятые поставки"><Table headings={['Поставка', 'Запчасть', 'Поставщик', 'Принято', 'Заявка']}
         rows={received.map(supply => ({ key: supply.id, cells: [

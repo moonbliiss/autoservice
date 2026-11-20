@@ -11,11 +11,11 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
   const requestSelect = `SELECT r.id, r.vehicle_id, r.description, r.priority, r.preferred_date, r.appointment,
     r.status AS request_status, r.created_at, v.model, v.plate, v.vin, v.mileage, v.client_id,
     c.name AS client_name, c.phone AS client_phone, o.id AS order_id, o.status AS work_status,
-    CASE WHEN t.id IS NOT NULL THEN 'transfer_pending' WHEN p.space_id IS NOT NULL THEN 'waiting_parts'
+    CASE WHEN t.id IS NOT NULL THEN 'transfer_pending' WHEN p.space_id IS NOT NULL AND ep.order_id IS NULL THEN 'waiting_parts'
       ELSE COALESCE(o.status,r.status) END AS status,
     t.id AS transfer_id,t.bay_id AS transfer_bay_id,tb.name AS transfer_bay_name,t.mechanic_id AS transfer_mechanic_id,
     tm.name AS transfer_mechanic_name,t.instructions AS transfer_instructions,
-    p.space_id AS parking_space, p.reason AS parking_reason, p.expected_date AS parts_expected_date,
+    ep.order_id IS NOT NULL AS parked_for_estimate, p.space_id AS parking_space, p.reason AS parking_reason, p.expected_date AS parts_expected_date,
     arrival.space_id AS arrival_space,
     o.mechanic_id, m.name AS mechanic_name, o.bay_id, b.name AS bay_name, o.work_instructions,
     o.pause_reason, o.eta, o.estimate_version, o.inspection_note, o.intake_note,
@@ -25,6 +25,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     FROM service_requests r JOIN vehicles v ON v.id=r.vehicle_id JOIN accounts c ON c.id=v.client_id
     LEFT JOIN orders o ON o.request_id=r.id LEFT JOIN accounts m ON m.id=o.mechanic_id
     LEFT JOIN bays b ON b.id=o.bay_id LEFT JOIN parking_assignments p ON p.order_id=o.id
+    LEFT JOIN estimate_parking ep ON ep.order_id=o.id
     LEFT JOIN parking_transfers t ON t.order_id=o.id LEFT JOIN bays tb ON tb.id=t.bay_id
     LEFT JOIN accounts tm ON tm.id=t.mechanic_id LEFT JOIN arrival_parking arrival ON arrival.request_id=r.id`;
 
@@ -71,7 +72,10 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     return all(requestSelect + ' ' + restriction + ' ORDER BY r.id DESC', ...args).map(row => summary(user, row));
   }
 
-  function summary(user, row) {
+  const mapActionKeys = ['receive', 'diagnose', 'estimate', 'assign', 'ready', 'returnCar',
+    'startDiagnosis', 'diagnosisReport', 'startRepair', 'pause', 'resume', 'repairReport'];
+
+  function summary(user, row, money) {
     const { id, model, plate, status, priority, appointment, created_at, eta, bay_id, parking_space } = row;
     const mechanic = user.role === 'mechanic';
     const assigned = mechanic && assignedTo(user, row);
@@ -86,7 +90,9 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
       ...(fullRequestAccess(user.role) ? { client_name: row.client_name, mechanic_name: row.mechanic_name } : {}),
       ...(fullRequestAccess(user.role) && status === 'issued' ? { issued_at: get(`SELECT created_at FROM history
         WHERE request_id=? AND title=? ORDER BY id DESC LIMIT 1`, id, transitions.issue[2])?.created_at ?? null } : {}),
-      ...(fullRequestAccess(user.role) ? { routing_actions: routingActions(user.role, status) } : {}),
+      ...((user.role === 'advisor' || assigned) && (bay_id || parking_space || row.arrival_space)
+        ? { map_actions: availableActions(user, { ...row, ...(money ?? amounts(row)) }).filter(key => mapActionKeys.includes(key)) } : {}),
+      ...(fullRequestAccess(user.role) ? { routing_actions: routingActions(user.role, row) } : {}),
       ...(row.transfer_id && (fullRequestAccess(user.role) || assigned) ? { transfer: {
         id: row.transfer_id, bay_id: row.transfer_bay_id, bay_name: row.transfer_bay_name,
         mechanic_id: row.transfer_mechanic_id, mechanic_name: row.transfer_mechanic_name,
@@ -124,7 +130,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
       }
     }
     return {
-      ...summary(user, row), ...(mechanic
+      ...summary(user, row, money), ...(mechanic
         ? { estimate: pastAssignment ? [] : money.estimate.map(({ part_id, name, quantity }) => ({ part_id, name, quantity })),
           work_orders: pastAssignment ? [] : money.work_orders.filter(document => document.status === 'approved')
             .map(({ version, title, status, lines }) => ({

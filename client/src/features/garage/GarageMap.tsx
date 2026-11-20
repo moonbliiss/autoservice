@@ -70,14 +70,17 @@ export function GarageMap({ bays, parking, arrivals = noArrivals, selected, targ
         const arrival = place.kind === 'arrival'
         const entry = (bay ? bays : arrival ? arrivals : parking).find(item => item.id === place.id)
         const model = entry?.model
-        const reserved = bay && bays.find(item => item.id === place.id)?.reserved
+        const post = bay ? bays.find(item => item.id === place.id) : undefined
+        const awaitingEstimate = post?.status === 'awaiting_estimate'
         const name = bay ? `Пост ${place.id}, ${garagePosts[place.id - 1].name}`
           : `${arrival ? 'Клиентская стоянка' : 'Сервисная парковка'}, место ${place.id}, ${model ?? (entry?.occupied ? 'занято' : 'свободно')}`
         return <button key={key} className={`marker ${bay ? 'bay-marker' : 'parking-marker'}${arrival ? ' arrival-marker' : ''}`} type="button" hidden={hidden}
-          data-location={key} data-occupied={Boolean(entry?.occupied)} data-reserved={Boolean(reserved)} data-target={targets.includes(key)}
-          style={{ left: x, top: y }} aria-label={name} title={bay && model ? `${name} · ${model}` : name}
+          data-location={key} data-occupied={Boolean(entry?.occupied)} data-reserved={Boolean(post?.reserved)} data-target={targets.includes(key)}
+          style={{ left: x, top: y }} aria-label={awaitingEstimate ? `${name} · Подготовка заказ-наряда` : name}
+          title={bay && model ? `${name} · ${model}` : name}
           aria-pressed={selectedKey === key} onClick={() => onSelect(place)}>
           {bay ? `Пост ${place.id}` : arrival ? `К${place.id}` : String(place.id).padStart(2, '0')}
+          {awaitingEstimate && <small className="marker-stage">Ждёт наряд</small>}
         </button>
       })}
     </div>

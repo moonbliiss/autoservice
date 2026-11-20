@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
+import { findPartByNumber, partNumber } from './partNumbers.js';
 import { availableActions, transitions } from './rules.js';
 import { date, integer, requireValue, str } from './validation.js';
 
-export function createWorkshopMutations({ run, get, all, transaction }, queries, account, workTime) {
+export function createWorkshopMutations({ run, get, transaction }, queries, account, workTime) {
   const { amounts, details, getRequest, permitted } = queries;
 
   function addHistory(id, user, title, note = null, isPublic = 1) {
@@ -75,7 +76,8 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
   function assignOrder(row, input, status) {
     const { mechanicId, bayId, bayName } = checkAssignment(row, input);
     updateOrder(row, status, { mechanic_id: mechanicId, bay_id: bayId,
-      work_instructions: str(input.instructions, 'Задача и ожидаемый результат'), pause_reason: null });
+      work_instructions: str(input.instructions, 'Задача и ожидаемый результат', { optional: status === 'diagnosis_assigned' })
+        ?? row.work_instructions ?? row.description, pause_reason: null });
     workTime.stop(row.order_id);
     if (row.parking_space) run('DELETE FROM parking_assignments WHERE order_id=?', row.order_id);
     if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', row.id);
@@ -95,15 +97,17 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
     const supply = get(`SELECT CASE WHEN COUNT(s.expected_date)=COUNT(*) THEN MAX(s.expected_date) END AS eta,
       GROUP_CONCAT(DISTINCT p.name) AS parts FROM part_supplies s JOIN parts p ON p.id=s.part_id
       WHERE s.request_id=? AND s.received<s.quantity`, row.id);
-    const defaultReason = supply.parts ? 'Ожидаются запчасти: ' + supply.parts.replaceAll(',', ', ').slice(0, 575)
+    const forEstimate = row.parked_for_estimate || ['awaiting_estimate', 'awaiting_approval', 'declined'].includes(row.status);
+    const defaultReason = forEstimate ? 'Автомобиль на парковке после диагностики.' : supply.parts ? 'Ожидаются запчасти: ' + supply.parts.replaceAll(',', ', ').slice(0, 575)
       : 'Ожидаются запчасти для продолжения работ.';
     const reason = str(input.parking_reason, 'Какие запчасти ожидаются', { optional: true, limit: 600 })
       ?? row.parking_reason ?? defaultReason;
     const expected = input.parts_expected_date === undefined
-      ? row.parts_expected_date ?? supply.eta : date(input.parts_expected_date, 'Ожидаемая дата поставки', true);
+      ? row.parts_expected_date ?? (forEstimate ? null : supply.eta) : date(input.parts_expected_date, 'Ожидаемая дата поставки', true);
     run(`INSERT INTO parking_assignments(order_id,space_id,reason,expected_date) VALUES (?,?,?,?)
       ON CONFLICT(order_id) DO UPDATE SET space_id=excluded.space_id, reason=excluded.reason, expected_date=excluded.expected_date`,
     row.order_id, space, reason, expected);
+    if (forEstimate) run('INSERT OR IGNORE INTO estimate_parking(order_id) VALUES (?)', row.order_id);
     run('UPDATE orders SET bay_id=NULL WHERE id=?', row.order_id);
     if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', row.id);
     workTime.stop(row.order_id);
@@ -116,12 +120,10 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
     workTime.report(row, user, kind, result, recommendations);
   }
 
-  function registerEstimatePart(name, price) {
-    const normalized = name.toLocaleLowerCase('ru');
-    const matches = all('SELECT id,name FROM parts').filter(row => row.name.toLocaleLowerCase('ru') === normalized);
-    if (matches.length === 1) return matches[0].id;
-    return run('INSERT INTO parts(sku,name,stock,price) VALUES (?,?,0,?)',
-      'AUTO-' + randomBytes(6).toString('hex').toUpperCase(), name, price).lastInsertRowid;
+  function registerEstimatePart(input, name, price) {
+    const sku = partNumber(input);
+    return findPartByNumber(get, sku)?.id ?? run('INSERT INTO parts(sku,name,stock,price) VALUES (?,?,0,?)',
+      sku, name, price).lastInsertRowid;
   }
 
   function saveDocument(row, input, additional) {
@@ -139,7 +141,7 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
       const name = catalog?.name ?? str(line.name, 'Название позиции', { limit: 100 });
       const quantity = integer(line.quantity, 'Количество', 1, 100);
       const price = integer(line.price, 'Цена', 0, 1_000_000);
-      const partId = line.kind === 'part' ? catalog.id : line.kind === 'custom_part' ? registerEstimatePart(name, price) : null;
+      const partId = line.kind === 'part' ? catalog.id : line.kind === 'custom_part' ? registerEstimatePart(line.sku, name, price) : null;
       const inserted = run(`INSERT INTO estimate_lines(order_id,version,service_id,part_id,name,quantity,unit_price)
         VALUES (?,?,?,?,?,?,?)`, row.order_id, version, line.kind === 'service' ? catalog.id : null, partId, name, quantity, price);
       if (line.kind === 'custom') run('INSERT INTO estimate_manual_services(line_id) VALUES (?)', inserted.lastInsertRowid);
@@ -214,7 +216,7 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
           break;
         case 'diagnosisReport':
           saveReport(user, row, input, 'diagnosis');
-          updateOrder(row, 'awaiting_estimate', { bay_id: null });
+          updateOrder(row, 'awaiting_estimate', { mechanic_id: null });
           break;
         case 'estimate':
           requireValue(integer(input.version, 'Версия заказ-наряда', 0) === row.estimate_version,
@@ -231,7 +233,7 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
           requireValue(line, 'Позиция уже уточнена или заказ-наряд изменился.', 409);
           requireValue(['part', 'service'].includes(input.line_kind), 'Укажите, запчасть это или работа.');
           if (input.line_kind === 'part') {
-            run('UPDATE estimate_lines SET part_id=? WHERE id=?', registerEstimatePart(line.name, line.unit_price), line.id);
+            run('UPDATE estimate_lines SET part_id=? WHERE id=?', registerEstimatePart(input.sku, line.name, line.unit_price), line.id);
           } else run('INSERT INTO estimate_manual_services(line_id) VALUES (?)', line.id);
           note = line.name + (input.line_kind === 'part' ? ' · запчасть' : ' · работа');
           break;
@@ -318,13 +320,14 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
           break;
         }
         case 'ready':
-          updateOrder(row, 'ready', { bay_id: null, inspection_note: str(input.note, 'Итог проверки') });
+          updateOrder(row, 'ready', { bay_id: null, inspection_note: str(input.note, 'Итог проверки', { optional: true }) });
           note = str(input.public_note, 'Сообщение клиенту', { optional: true }) || 'Можно забрать автомобиль в сервисе.';
           break;
         case 'returnCar':
           note = str(input.note, 'Причина возврата');
           updateOrder(row, 'ready', { bay_id: null });
           if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', id);
+          if (row.parking_space) run('DELETE FROM parking_assignments WHERE order_id=?', row.order_id);
           break;
         case 'payment': {
           const amount = integer(input.amount, 'Сумма', 1, money.total - money.paid);

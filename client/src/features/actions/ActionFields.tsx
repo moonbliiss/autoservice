@@ -1,17 +1,18 @@
 import { useState } from 'react'
-import type { Dashboard, PartSupply, RequestAction, RequestDetail, WarehouseNeed } from '../../api/types'
+import type { Dashboard, Part, PartSupply, RequestAction, RequestDetail, WarehouseNeed } from '../../api/types'
 import { arrivalLocations, type MapLocation } from '../garage/mapLayout'
 import { money } from '../../shared/format'
 import { paymentLabels } from '../../shared/labels'
 import { AdvisorRequestFields } from './AdvisorRequestFields'
 import { EstimateFields } from './EstimateFields'
-import { OrderSupplyFields, ReceiveSupplyFields, WarehouseIssueFields } from './SupplyFields'
+import { OrderSupplyFields, ReceiveSupplyFields, RestockFields, WarehouseIssueFields } from './SupplyFields'
 import { Field, SelectField, TextField, type Option } from './fields'
 
 export type FormAction =
-  | { key: RequestAction; row: RequestDetail; destination?: MapLocation; documentVersion?: number }
+  | { key: RequestAction; row: RequestDetail; destination?: MapLocation; documentVersion?: number; fromMap?: boolean }
   | { key: 'newRequest'; vehicleId?: number; arrivalSpace?: number }
   | { key: 'restock' }
+  | { key: 'setPartNumber'; part: Part }
   | { key: 'orderSupply'; requestId?: number; partId?: number; quantity?: number }
   | { key: 'receiveSupply'; supply: PartSupply }
   | { key: 'warehouseIssue'; need: WarehouseNeed }
@@ -31,7 +32,7 @@ function NewRequestFields({ vehicles = [], vehicleId }: { vehicles: Dashboard['v
   </>
 }
 
-function AssignmentFields({ dashboard, row, bayId }: { dashboard: Dashboard; row: RequestDetail; bayId?: number }) {
+function AssignmentFields({ dashboard, row, bayId, diagnosis = false }: { dashboard: Dashboard; row: RequestDetail; bayId?: number; diagnosis?: boolean }) {
   const bays = dashboard.bays ?? []
   const usedBays = bays.filter(bay => bay.occupied && bay.request_id !== row.id)
   const reservations = bays.filter(bay => bay.reserved && bay.reserved_request_id !== row.id)
@@ -45,7 +46,7 @@ function AssignmentFields({ dashboard, row, bayId }: { dashboard: Dashboard; row
       options={[['', 'Выберите пост'], ...free.map((bay): Option => [bay.id, `Пост ${bay.id} · ${bay.name}`])]} />
     <SelectField label="Механик" name="mechanic_id" defaultValue={row.transfer?.mechanic_id ?? row.mechanic_id ?? ''}
       options={[['', 'Выберите механика'], ...workers.map((person): Option => [person.id, person.name])]} />
-    <TextField label="Задача и ожидаемый результат" name="instructions" defaultValue={row.transfer?.instructions ?? row.work_instructions ?? ''} />
+    <TextField label="Задача и ожидаемый результат" name="instructions" defaultValue={row.transfer?.instructions ?? row.work_instructions ?? (diagnosis ? row.description : '') ?? ''} />
   </>
 }
 
@@ -53,6 +54,18 @@ function ReportFields({ repair }: { repair: boolean }) {
   return <>
     <TextField label={repair ? 'Что выполнено и как проверен результат?' : 'Что проверили и какую неисправность нашли?'} name="result" />
     <TextField label="Рекомендации или замечания" name="recommendations" required={false} />
+  </>
+}
+
+function ClassifyLineFields({ row }: { row: RequestDetail }) {
+  const [kind, setKind] = useState('part')
+  return <>
+    <SelectField label="Позиция заказ-наряда" name="line_id" options={(row.work_orders ?? [])
+      .filter(document => document.status !== 'declined').flatMap(document => document.lines
+        .filter(line => line.unclassified && line.id !== undefined)
+        .map((line): Option => [line.id!, `${line.name} · ${document.title}`]))} />
+    <SelectField label="Тип позиции" name="line_kind" value={kind} onChange={setKind} options={ [['part', 'Запчасть'], ['service', 'Работа']] } />
+    {kind === 'part' && <Field label="Артикул производителя" name="sku" maxLength={40} />}
   </>
 }
 
@@ -64,10 +77,10 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
   if (action.key === 'newRequest') return dashboard.user.role === 'advisor'
     ? <AdvisorRequestFields clients={dashboard.clients} vehicles={dashboard.vehicles} arrivalSpace={action.arrivalSpace} />
     : <NewRequestFields vehicles={dashboard.vehicles} vehicleId={action.vehicleId} />
-  if (action.key === 'restock') return <>
-    <SelectField label="Запчасть" name="part_id" options={(dashboard.parts ?? []).map(part => [part.id, part.name])} />
-    <Field label="Количество" name="quantity" type="number" defaultValue={1} min={1} max={10000} />
-    <TextField label="Поставщик или номер накладной" name="note" />
+  if (action.key === 'restock') return <RestockFields dashboard={dashboard} />
+  if (action.key === 'setPartNumber') return <>
+    <p>{action.part.name}</p>
+    <Field label="Артикул производителя" name="sku" maxLength={40} defaultValue={action.part.sku} />
   </>
   const { key, row } = action
   switch (key) {
@@ -90,7 +103,7 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
       <p>Освободить место {row.arrival_space} на клиентской стоянке?</p>
       <input type="hidden" name="arrival_space" value={row.arrival_space ?? ''} />
     </>
-    case 'diagnose':
+    case 'diagnose': return <AssignmentFields dashboard={dashboard} row={row} bayId={action.destination?.id} diagnosis />
     case 'moveBay':
     case 'assign': return <AssignmentFields dashboard={dashboard} row={row} bayId={action.destination?.id} />
     case 'dispatchTransfer': return <>
@@ -101,7 +114,7 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
     case 'park': {
       const spaces = (dashboard.parking ?? []).filter(space => !space.request_id || space.request_id === row.id)
       return <>
-        {spaces.length ? <p>Автомобиль будет ждать запчасти на парковке. Пост и механик освободятся.</p>
+        {spaces.length ? <p>Автомобиль переместится на парковку, а пост освободится.</p>
           : <p>Все места на парковке заняты.</p>}
         <SelectField label="Место на парковке" name="parking_space" defaultValue={action.destination?.id ?? row.parking_space ?? ''}
           options={ [['', 'Выберите место'], ...spaces.map((space): Option => [space.id, `Место ${space.id}`])] } />
@@ -113,13 +126,8 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
     }
     case 'estimate':
     case 'addWorkOrder': return <EstimateFields dashboard={dashboard} row={row} additional={key === 'addWorkOrder'} />
-    case 'classifyLine': return <>
-      <SelectField label="Позиция заказ-наряда" name="line_id" options={(row.work_orders ?? [])
-        .filter(document => document.status !== 'declined').flatMap(document => document.lines
-          .filter(line => line.unclassified && line.id !== undefined)
-          .map((line): Option => [line.id!, `${line.name} · ${document.title}`]))} />
-      <SelectField label="Тип позиции" name="line_kind" options={ [['part', 'Запчасть'], ['service', 'Работа']] } />
-    </>
+    case 'classifyLine': return <ClassifyLineFields row={row} />
+    case 'ready': return null
     case 'approve':
     case 'decline':
     case 'recordDecision': {
@@ -143,10 +151,6 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
     case 'pause': return <TextField label="Причина паузы" name="note" />
     case 'release': return <p>Пост станет доступен для других работ. Чтобы продолжить ремонт, назначьте пост заново.</p>
     case 'rework': return <TextField label="Что нужно исправить" name="note" />
-    case 'ready': return <>
-      <TextField label="Итог проверки для сотрудников" name="note" />
-      <TextField label="Сообщение клиенту" name="public_note" required={false} />
-    </>
     case 'returnCar': return <TextField label="Причина возврата и инструкции клиенту" name="note" />
     case 'cancel': return <TextField label="Причина отмены (по желанию)" name="note" required={false} />
     case 'payment': {

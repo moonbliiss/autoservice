@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import type { Dashboard, ParkingSpace, RoutingAction } from '../../api/types'
+import type { Dashboard, ParkingSpace, RequestAction, RoutingAction } from '../../api/types'
 import { code, dateOnly } from '../../shared/format'
-import { presenceLabels } from '../../shared/labels'
+import { actionLabels, presenceLabels } from '../../shared/labels'
 import { Button } from '../../shared/ui'
 import { StatusTag } from '../requests/status'
 import { GarageMap } from './GarageMap'
@@ -17,8 +17,9 @@ function moveAction(actions: RoutingAction[], place: MapLocation) {
   return actions.find(key => key !== 'park')
 }
 
-export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewRequest, onNewArrival, queues }: {
+export function WorkshopFloor({ dashboard, onOpen, onMove, onMapAction, onOpenStock, onNewRequest, onNewArrival, queues, shift }: {
   dashboard: Dashboard; onOpen: (id: number) => void; onMove: MoveRequest; onOpenStock?: () => void
+  onMapAction: (id: number, key: RequestAction) => void; shift?: ReactNode
   onNewRequest?: () => void; onNewArrival?: (place: number) => void; queues?: ReactNode
 }) {
   const [selection, setSelection] = useState<{ place: MapLocation; requestId: number | null } | DeskLocation | 'queue' | null>(null)
@@ -67,9 +68,10 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewReq
     : selectedBay ? `Пост ${selectedBay.id} · ${selectedBay.name}`
       : selected && `${arriving ? 'Клиентская стоянка' : 'Сервисная парковка'} · место ${selected.place.id}`
 
-  return <div className={advisor ? 'workshop-map workshop-map-main' : 'workshop-map'}>
+  return <div className={(advisor || shift) ? 'workshop-map workshop-map-main' : 'workshop-map'}>
     <GarageMap bays={bays} parking={parking} arrivals={arrivals} selected={selected?.place ?? null} targets={targets}
       onSelect={selectPlace} onClear={() => setSelection(null)} onDesk={setSelection} staff={staff}>
+      {shift}
       {advisor && <header className="map-toolbar">
         <h1>Карта сервиса</h1>
         <div className="map-toolbar-actions">
@@ -104,7 +106,12 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewReq
             {arriving && request?.client_name && <p>Клиент: {request.client_name}</p>}
             {displayedRequest.transfer && <p className="muted">Перегон на пост {displayedRequest.transfer.bay_id} · {displayedRequest.transfer.mechanic_name}</p>}
             {expected && <p className="muted">Ожидаемая поставка: {dateOnly(expected)}</p>}
-            <Button variant="primary" onClick={() => onOpen(displayedRequest.id)}>Открыть заявку</Button>
+            <div className="map-toolbar-actions">
+              {displayedRequest.map_actions?.map(key => <Button key={key} variant="primary"
+                onClick={() => onMapAction(displayedRequest.id, key)}>{actionLabels[key]}</Button>)}
+              <Button variant={displayedRequest.map_actions?.length ? 'secondary' : 'primary'}
+                onClick={() => onOpen(displayedRequest.id)}>Открыть заявку</Button>
+            </div>
             {arriving && advisor && request && <Button variant="text-button"
               onClick={() => onMove(request.id, 'leaveArrival', selected.place)}>Освободить место</Button>}
           </> : <>

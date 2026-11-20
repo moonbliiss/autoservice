@@ -1,11 +1,10 @@
-import type { Dashboard, RequestSummary, Status } from '../../api/types'
+import type { Dashboard, RequestAction, RequestSummary, Status } from '../../api/types'
 import { code } from '../../shared/format'
 import { presenceLabels, roleLabels, statusLabels } from '../../shared/labels'
 import { Button, Heading, Metrics, Panel } from '../../shared/ui'
 import { StatusTag, closedStatuses, workshopStatuses } from '../requests/status'
 import { RequestTable, type OpenRequest } from '../requests/RequestTable'
 import { WorkshopFloor, type MoveRequest } from '../garage/WorkshopFloor'
-import { TransferTask } from '../requests/TransferTask'
 import { WorkTimer } from '../requests/WorkTimer'
 import './overview.css'
 
@@ -43,8 +42,9 @@ function AdvisorRequests({ requests, onOpen }: { requests: RequestSummary[]; onO
   </div>
 }
 
-export function Overview({ dashboard, onMove, onOpen, onNewRequest, onNewArrival, onRequests, onStock, onCompleteTransfer, submitting }: {
+export function Overview({ dashboard, onMove, onMapAction, onOpen, onNewRequest, onNewArrival, onRequests, onStock, onCompleteTransfer, submitting }: {
   dashboard: Dashboard; onOpen: OpenRequest; onNewRequest: () => void; onRequests: () => void; onMove: MoveRequest; onStock: () => void;
+  onMapAction: (id: number, action: RequestAction) => void;
   onNewArrival: (place: number) => void;
   onCompleteTransfer: (row: RequestSummary) => void; submitting: boolean
 }) {
@@ -59,34 +59,35 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onNewArrival
     ]} />
     <Panel title="История обслуживания"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
   </>
-  const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove}
+  const transfer = role === 'mechanic' ? requests.find(row => row.transfer && row.assigned_to_me) : undefined
+  const active = role === 'mechanic'
+    ? requests.find(row => row.status !== 'paused' && workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me) : undefined
+  const shift = role === 'mechanic' && <header className="map-toolbar shift-toolbar">
+    <h1>Моя смена</h1>
+    {Boolean(dashboard.staff_presence?.length) && <ul className="shift-presence" aria-label="Присутствие сотрудников">
+      {dashboard.staff_presence?.map(person => <li key={person.id}>
+        <span className="presence-dot" data-status={person.status ?? ''} aria-hidden="true" />
+        <strong>{roleLabels[person.role]}</strong>
+        <span>{person.status ? presenceLabels[person.status] : 'Не отмечено'}</span>
+      </li>)}
+    </ul>}
+    {transfer?.transfer ? <div className="shift-task">
+      <h2>Перегнать автомобиль в цех</h2>
+      <p>{transfer.model} · место {transfer.parking_space} → пост {transfer.transfer.bay_id}</p>
+      <button type="button" className="primary" disabled={submitting} onClick={() => onCompleteTransfer(transfer)}>Машина на посту</button>
+      <Button variant="text-button" onClick={() => onOpen(transfer.id)}>Открыть задачу</Button>
+    </div> : active ? <div className="shift-task">
+      <p><strong>Пост {active.bay_id} · {active.model}</strong> <StatusTag status={active.status} /></p>
+      <WorkTimer timer={active.work_timer} />
+      <Button variant="text-button" onClick={() => onOpen(active.id)}>Открыть задачу</Button>
+    </div> : <p className="shift-task muted">Активного назначения пока нет.</p>}
+  </header>
+  const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove} onMapAction={onMapAction} shift={shift}
     onOpenStock={role === 'advisor' || role === 'manager' ? onStock : undefined}
     onNewRequest={role === 'advisor' ? onNewRequest : undefined} onNewArrival={role === 'advisor' ? onNewArrival : undefined}
     queues={role === 'advisor' && requests.some(row => !closedStatuses.has(row.status))
       ? <AdvisorRequests requests={requests} onOpen={onOpen} /> : undefined} />
-  if (role === 'advisor') return floor
-  if (role === 'mechanic') {
-    const transfer = requests.find(row => row.transfer && row.assigned_to_me)
-    const active = requests.find(row => row.status !== 'paused' && workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me)
-    return <>
-      <Heading title="Моя смена" subtitle="Текущий пост, задача и результаты работы." eyebrow="КАБИНЕТ МЕХАНИКА" />
-      {Boolean(dashboard.staff_presence?.length) && <ul className="shift-presence" aria-label="Присутствие сотрудников">
-        {dashboard.staff_presence?.map(person => <li key={person.id}>
-          <span className="presence-dot" data-status={person.status ?? ''} aria-hidden="true" />
-          <strong>{roleLabels[person.role]}</strong>
-          <span>{person.status ? presenceLabels[person.status] : 'Не отмечено'}</span>
-        </li>)}
-      </ul>}
-      {transfer ? <TransferTask row={transfer} busy={submitting} onComplete={() => onCompleteTransfer(transfer)} />
-        : active ? <Panel inset title={`Ваш пост ${String(active.bay_id).padStart(2, '0')} · ${bays.find(bay => bay.id === active.bay_id)?.name ?? ''}`}>
-        <div className="split"><div><strong>{active.model}</strong><p className="muted">{active.plate}</p></div><StatusTag status={active.status} /></div>
-        <WorkTimer timer={active.work_timer} />
-        <div className="actions"><Button variant="primary" onClick={() => onOpen(active.id)}>Открыть задачу</Button></div>
-      </Panel> : <Panel inset title="Текущий пост"><p className="muted">Активного назначения пока нет.</p></Panel>}
-      <div className="section-gap" />{floor}
-      <Panel title="Задачи смены"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
-    </>
-  }
+  if (role === 'advisor' || role === 'mechanic') return floor
   return <>
     <Heading title="Обзор автосервиса" subtitle="Загрузка цеха и движение заказов" eyebrow="КАБИНЕТ УПРАВЛЯЮЩЕГО" />
     <Metrics items={[

@@ -3,7 +3,7 @@ import type { Dashboard, EstimateLine, RequestDetail } from '../../api/types'
 import { money } from '../../shared/format'
 import { Field, SelectField, TextField } from './fields'
 
-interface DraftLine { id: number; catalog: string; name: string; price: string; quantity: string }
+interface DraftLine { id: number; catalog: string; name: string; sku: string; price: string; quantity: string }
 
 function makeLine(id: number, line?: EstimateLine, catalog = ''): DraftLine {
   return {
@@ -11,6 +11,7 @@ function makeLine(id: number, line?: EstimateLine, catalog = ''): DraftLine {
     catalog: line?.part_id ? 'part:' + line.part_id : line?.service_id ? 'service:' + line.service_id
       : line && !line.unclassified ? 'custom' : catalog,
     name: line?.part_id || line?.service_id ? '' : line?.name ?? '',
+    sku: '',
     price: String(line?.unit_price ?? ''),
     quantity: String(line?.quantity ?? 1),
   }
@@ -26,7 +27,7 @@ export function EstimateFields({ dashboard, row, additional }: { dashboard: Dash
     { value: 'custom', name: 'Работа вручную', price: '' },
     { value: 'custom_part', name: 'Запчасть вручную', price: '' },
     ...(dashboard.services ?? []).map(item => ({ value: 'service:' + item.id, name: item.name, price: String(item.price) })),
-    ...(dashboard.parts ?? []).map(item => ({ value: 'part:' + item.id, name: item.name + ' · запчасть', price: String(item.price ?? '') })),
+    ...(dashboard.parts ?? []).map(item => ({ value: 'part:' + item.id, name: item.name + ' · ' + (item.sku ?? ''), price: String(item.price ?? '') })),
   ]
   const total = lines.reduce((sum, line) => sum + Number(line.quantity) * Number(line.price), 0)
 
@@ -61,6 +62,10 @@ export function EstimateFields({ dashboard, row, additional }: { dashboard: Dash
         <div className="custom-item" hidden={!line.catalog.startsWith('custom')}>
           <Field label="Название" name="name" required={line.catalog.startsWith('custom')} maxLength={100}
             value={line.name} onChange={event => change(line.id, { name: event.target.value })} />
+        </div>
+        <div hidden={line.catalog !== 'custom_part'}>
+          <Field label="Артикул производителя" name="sku" maxLength={40} required={line.catalog === 'custom_part'}
+            value={line.sku} onChange={event => change(line.id, { sku: event.target.value })} />
         </div>
         <div className="fields-row">
           <Field label="Количество" name="quantity" type="number" min={1} max={100}

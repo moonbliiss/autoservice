@@ -1,3 +1,4 @@
+import { createWarehousePart, findPartByNumber, partNumber } from './partNumbers.js';
 import { date, integer, requireValue, str } from './validation.js';
 
 export function createInventory({ all, get, run, transaction }) {
@@ -16,12 +17,23 @@ export function createInventory({ all, get, run, transaction }) {
 
   function restock(user, input) {
     requireStockkeeper(user);
-    const id = integer(input.part_id, 'Запчасть');
     const quantity = integer(input.quantity, 'Количество', 1, 10000);
     const note = str(input.note, 'Поставщик или накладная');
     return transaction(() => {
+      const id = input.part_id === 'new' ? createWarehousePart({ get, run }, input) : integer(input.part_id, 'Запчасть');
       addStock(user, id, quantity, note);
       return { stock: get('SELECT stock FROM parts WHERE id=?', id).stock };
+    });
+  }
+
+  function setPartNumber(user, id, input) {
+    requireStockkeeper(user);
+    const sku = partNumber(input.sku);
+    return transaction(() => {
+      const existing = findPartByNumber(get, sku);
+      requireValue(!existing || existing.id === id, 'Этот артикул уже используется для другой детали.', 409);
+      requireValue(run('UPDATE parts SET sku=? WHERE id=?', sku, id).changes, 'Запчасть не найдена.', 404);
+      return { sku };
     });
   }
 
@@ -38,17 +50,9 @@ export function createInventory({ all, get, run, transaction }) {
         requireValue(request, 'Заявка не найдена.', 404);
         requireValue(!['cancelled', 'ready', 'issued'].includes(request.status), 'Для этой заявки закупка уже недоступна.', 409);
       }
-      let partId;
-      if (input.part_id === 'new') {
-        const sku = str(input.sku, 'Артикул', { limit: 40 }).toUpperCase();
-        const name = str(input.name, 'Название детали', { limit: 100 });
-        const price = integer(input.price, 'Цена за единицу', 0, 1_000_000);
-        requireValue(!get('SELECT id FROM parts WHERE UPPER(sku)=?', sku), 'Этот артикул уже есть. Выберите его в списке.', 409);
-        partId = run('INSERT INTO parts(sku,name,stock,price) VALUES (?,?,0,?)', sku, name, price).lastInsertRowid;
-      } else {
-        partId = integer(input.part_id, 'Запчасть');
-        requireValue(get('SELECT id FROM parts WHERE id=?', partId), 'Запчасть не найдена.', 404);
-      }
+      const partId = input.part_id === 'new'
+        ? createWarehousePart({ get, run }, input) : integer(input.part_id, 'Запчасть');
+      requireValue(get('SELECT id FROM parts WHERE id=?', partId), 'Запчасть не найдена.', 404);
       const id = run('INSERT INTO part_supplies(part_id,request_id,supplier,quantity,expected_date) VALUES (?,?,?,?,?)',
         partId, requestId, supplier, quantity, expectedDate).lastInsertRowid;
       return { id };
@@ -98,7 +102,7 @@ export function createInventory({ all, get, run, transaction }) {
 
   function needs() {
     const rows = all(`SELECT o.request_id,o.bay_id,o.mechanic_id,o.status AS work_status,a.name AS mechanic,
-      CASE WHEN transfer.id IS NOT NULL THEN 'transfer_pending' WHEN parking.space_id IS NOT NULL THEN 'waiting_parts'
+      CASE WHEN transfer.id IS NOT NULL THEN 'transfer_pending' WHEN parking.space_id IS NOT NULL AND ep.order_id IS NULL THEN 'waiting_parts'
         ELSE o.status END AS status,
       v.model,v.plate,p.id AS part_id,CASE WHEN p.id IS NULL THEN e.id END AS unclassified_line_id,
       COALESCE(p.name,e.name) AS name,p.sku,COALESCE(p.stock,0) AS stock,SUM(e.quantity) AS required,
@@ -112,6 +116,7 @@ export function createInventory({ all, get, run, transaction }) {
       JOIN work_order_document_lines e ON e.order_id=o.id AND e.decision<>'declined'
       LEFT JOIN parts p ON p.id=e.part_id
       LEFT JOIN accounts a ON a.id=o.mechanic_id LEFT JOIN parking_assignments parking ON parking.order_id=o.id
+      LEFT JOIN estimate_parking ep ON ep.order_id=o.id
       LEFT JOIN parking_transfers transfer ON transfer.order_id=o.id
       WHERE o.status NOT IN ('ready','issued') AND (p.id IS NOT NULL OR e.unclassified=1)
       GROUP BY o.id,p.id,unclassified_line_id HAVING approved>issued OR pending>0
@@ -138,5 +143,5 @@ export function createInventory({ all, get, run, transaction }) {
       ORDER BY s.id DESC`);
   }
 
-  return { restock, orderSupply, receiveSupply, issueParts, needs, supplies, movements };
+  return { restock, setPartNumber, orderSupply, receiveSupply, issueParts, needs, supplies, movements };
 }

@@ -16,14 +16,15 @@ function submissionFor(action: FormAction, form: HTMLFormElement): Submission {
   }
   if (action.key === 'estimate') data.version = action.row.estimate_version
   if (action.key === 'estimate' || action.key === 'addWorkOrder') {
+    const skus = fields.getAll('sku')
     const names = fields.getAll('name')
     const quantities = fields.getAll('quantity')
     const prices = fields.getAll('price')
     data.lines = fields.getAll('catalog').map((value, index) => {
       const [kind, catalog_id] = String(value).split(':')
-      return { kind, catalog_id, name: String(names[index]), quantity: String(quantities[index]), price: String(prices[index]) }
+      return { kind, catalog_id, name: String(names[index]), sku: String(skus[index]), quantity: String(quantities[index]), price: String(prices[index]) }
     })
-    for (const key of ['catalog', 'name', 'quantity', 'price']) delete data[key]
+    for (const key of ['catalog', 'name', 'sku', 'quantity', 'price']) delete data[key]
   }
   return data
 }

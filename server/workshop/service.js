@@ -31,7 +31,7 @@ export function openWorkshop(file, { now = Date.now } = {}) {
   });
 
   const { list, details, dashboard, tracking } = queries;
-  const { restock, orderSupply, receiveSupply, issueParts } = inventory;
+  const { restock, setPartNumber, orderSupply, receiveSupply, issueParts } = inventory;
   function setPresence(user, { status }) {
     requireValue(['advisor', 'stockkeeper'].includes(user.role), 'Отметка присутствия доступна приёмщику и запчастисту.', 403);
     requireValue(status === 'present' || status === 'away', 'Выберите статус присутствия.');
@@ -39,5 +39,5 @@ export function openWorkshop(file, { now = Date.now } = {}) {
       ON CONFLICT(account_id) DO UPDATE SET status=excluded.status`, user.id, status);
     return { status };
   }
-  return { profile, list, details, dashboard, tracking, setPresence, ...mutations, restock, orderSupply, receiveSupply, issueParts, close: database.close };
+  return { profile, list, details, dashboard, tracking, setPresence, ...mutations, restock, setPartNumber, orderSupply, receiveSupply, issueParts, close: database.close };
 }

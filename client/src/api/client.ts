@@ -26,6 +26,7 @@ export const savePresence = (status: PresenceStatus) => api<{ status: PresenceSt
 export const selectProfile = (profile: Profile) => api('session', { profile })
 export const getRequest = (id: number) => api<RequestDetail>('requests/' + id)
 export const createRequest = (data: Submission) => api<RequestDetail>('requests', data)
+export const setPartNumber = (id: number, data: Submission) => api(`stock/${id}/sku`, data)
 export const restock = (data: Submission) => api('stock', data)
 export const issueStock = (data: Submission) => api('stock/issue', data)
 export const orderSupply = (data: Submission) => api('supplies', data)

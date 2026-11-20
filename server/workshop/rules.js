@@ -17,11 +17,11 @@ export const transitions = {
   decline: ['client', documentStates, 'Клиент отклонил заказ-наряд'],
   recordDecision: ['advisor', documentStates, 'Приёмщик зафиксировал ответ клиента'],
   assign: ['advisor', ['approved', 'repair_assigned', 'paused'], 'Назначены работы'],
-  dispatchTransfer: ['advisor manager', ['waiting_parts', 'transfer_pending'], 'Назначен перегон в цех'],
+  dispatchTransfer: ['advisor manager', ['waiting_parts', 'transfer_pending', 'approved'], 'Назначен перегон в цех'],
   cancelTransfer: ['advisor manager', ['transfer_pending'], 'Перегон отменён'],
   completeTransfer: ['mechanic', ['transfer_pending'], 'Механик подтвердил перегон в цех'],
   moveBay: ['advisor', ['diagnosing', 'repairing', 'inspection'], 'Изменён пост или исполнитель'],
-  park: ['advisor', ['diagnosis_assigned', 'diagnosing', 'approved', 'repair_assigned', 'repairing', 'paused', 'inspection', 'waiting_parts'], 'Автомобиль на парковке · ожидание запчастей'],
+  park: ['advisor', ['diagnosis_assigned', 'diagnosing', 'awaiting_estimate', 'awaiting_approval', 'declined', 'approved', 'repair_assigned', 'repairing', 'paused', 'inspection', 'waiting_parts'], 'Автомобиль переведён на парковку'],
   startRepair: ['mechanic', ['repair_assigned'], 'Ремонт начат'],
   pause: ['mechanic', ['repairing'], 'Ремонт приостановлен'],
   resume: ['mechanic', ['paused'], 'Ремонт возобновлён'],
@@ -41,6 +41,8 @@ export function availableActions(user, row) {
     if (!roles.split(' ').includes(user.role) || !states.includes(row.status)) return false;
     if (key === 'leaveArrival') return row.arrival_space !== null;
     if (key === 'arrivalPark') return !row.bay_id && !row.parking_space;
+    if (key === 'dispatchTransfer') return Boolean(row.parking_space);
+    if (key === 'assign') return !row.parking_space;
     if (key === 'payment') return row.total > row.paid;
     if (key === 'classifyLine') return row.work_orders.some(document => document.status !== 'declined'
       && document.lines.some(line => line.unclassified));
@@ -52,9 +54,10 @@ export function availableActions(user, row) {
   }).map(([key]) => key);
 }
 
-export function routingActions(role, status) {
+export function routingActions(role, row) {
   return ['park', 'moveBay', 'assign', 'diagnose', 'dispatchTransfer'].filter(key => {
     const [roles, states] = transitions[key];
-    return roles.split(' ').includes(role) && states.includes(status);
+    return roles.split(' ').includes(role) && states.includes(row.status)
+      && (key !== 'dispatchTransfer' || row.parking_space) && (key !== 'assign' || !row.parking_space);
   });
 }

@@ -46,7 +46,11 @@ test('заявка проходит диагностику, согласован
   workshop.action(mechanic, 1, 'diagnosisReport', { result: 'Люфта нет', minutes: 15 });
   assert.equal(step(advisor, 'diagnose', assignment).bay_id, 3);
   assert.equal(step(mechanic, 'startDiagnosis').status, 'diagnosing');
-  assert.equal(step(mechanic, 'diagnosisReport', { result: 'Износ колодок 85%', recommendations: 'Замена', minutes: 24 }).bay_id, null);
+  step(mechanic, 'diagnosisReport', { result: 'Износ колодок 85%', recommendations: 'Замена', minutes: 24 });
+  const diagnosed = workshop.details(advisor, id);
+  assert.equal(diagnosed.bay_id, 3);
+  assert.equal(diagnosed.mechanic_id, null);
+  assert.ok(diagnosed.map_actions.includes('estimate'));
   assert.equal(workshop.details(client, id).reports.length, 0);
 
   const quote = { eta: '2027-06-11T17:00', lines: [
@@ -435,8 +439,8 @@ test('новые запчасти из заказ-наряда появляют�
   const need = () => workshop.dashboard(stockkeeper).warehouse_needs.filter(row => row.request_id === 3);
   workshop.action(advisor, 3, 'receive', { mileage: 62000 });
   workshop.action(advisor, 3, 'estimate', { version: 0, lines: [
-    { kind: 'custom_part', name: 'Направляющая суппорта', quantity: 2, price: 400 },
-    { kind: 'custom_part', name: 'Пыльник суппорта', quantity: 1, price: 300 },
+    { kind: 'custom_part', sku: '341167', name: 'Направляющая суппорта', quantity: 2, price: 400 },
+    { kind: 'custom_part', sku: '341169', name: 'Пыльник суппорта', quantity: 1, price: 300 },
     { kind: 'custom', name: 'Работа слесаря', quantity: 1, price: 600 },
   ] });
   assert.deepEqual(need().map(row => row.name).sort(), ['Направляющая суппорта', 'Пыльник суппорта']);
@@ -462,7 +466,7 @@ test('заказ-наряды согласуются отдельно до на�
   const oil = { kind: 'part', catalog_id: 1, quantity: 1, price: 900 };
   step(advisor, 'estimate', { title: 'Двигатель', version: 0, lines: [oil] });
   step(advisor, 'addWorkOrder', { title: 'Подвеска', lines: [
-    { kind: 'custom_part', name: 'Сайлентблок', quantity: 2, price: 400 },
+    { kind: 'custom_part', sku: '311267', name: 'Сайлентблок', quantity: 2, price: 400 },
   ] });
   assert.deepEqual(workshop.tracking(draft.tracking_token).work_orders.map(doc => [doc.title, doc.status]),
     [['Двигатель', 'pending'], ['Подвеска', 'pending']]);
@@ -476,7 +480,7 @@ test('заказ-наряды согласуются отдельно до на�
   const issue = { request_id: draft.id, part_id: 1, quantity: 1 };
   workshop.issueParts(stockkeeper, issue);
   const updated = step(advisor, 'addWorkOrder', { title: 'Дополнительно по двигателю', lines: [
-    oil, { kind: 'custom_part', name: 'Сальник коленвала', quantity: 1, price: 1500 },
+    oil, { kind: 'custom_part', sku: '111177', name: 'Сальник коленвала', quantity: 1, price: 1500 },
   ] });
   assert.equal(updated.status, 'repairing');
   assert.ok(updated.work_timer.started_at);
@@ -558,6 +562,7 @@ test('клиентская стоянка отмечает приезд и ос�
   assert.throws(() => move(created.id, 5), { status: 409 });
   assert.equal(workshop.action(advisor, 3, 'receive', { mileage: 62500 }).arrival_space, 5);
   workshop.action(mechanic, 1, 'diagnosisReport', { result: 'Диагностика завершена' });
+  workshop.action(advisor, 1, 'park', { parking_space: 1 });
   const assigned = workshop.action(advisor, 3, 'diagnose', {
     mechanic_id: mechanic.id, bay_id: 1, instructions: 'Начать проверку',
   });
@@ -568,4 +573,54 @@ test('клиентская стоянка отмечает приезд и ос�
   assert.equal(workshop.action(advisor, created.id, 'leaveArrival', { arrival_space: 5 }).arrival_space, null);
   move(created.id, 4);
   assert.equal(workshop.action(advisor, created.id, 'cancel', {}).arrival_space, null);
+});
+
+test('после диагностики машина видна на карте и может ждать согласования на парковке', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const client = workshop.profile('client');
+  const mechanic = workshop.profile('mechanic');
+  workshop.action(mechanic, 1, 'diagnosisReport', { result: 'Проверена подвеска' });
+  const diagnosed = workshop.dashboard(advisor).requests.find(row => row.id === 1);
+  assert.deepEqual([diagnosed.status, diagnosed.bay_id, diagnosed.map_actions.includes('estimate')], ['awaiting_estimate', 1, true]);
+  assert.equal(workshop.action(advisor, 1, 'park', { parking_space: 4 }).status, 'awaiting_estimate');
+  workshop.action(advisor, 3, 'receive', { mileage: 62000 });
+  const assigned = workshop.action(advisor, 3, 'diagnose', { bay_id: 1, mechanic_id: mechanic.id });
+  assert.equal(assigned.work_instructions, assigned.description);
+  workshop.action(advisor, 1, 'estimate', { version: 0, lines: [{ kind: 'custom', name: 'Замена тяги', price: 900, quantity: 1 }] });
+  assert.equal(workshop.details(client, 1).status, 'awaiting_approval');
+  const approved = workshop.action(client, 1, 'approve', { version: 1 });
+  assert.deepEqual([approved.status, approved.parking_space], ['approved', 4]);
+  const waiting = workshop.details(advisor, 1);
+  assert.ok(waiting.routing_actions.includes('dispatchTransfer'));
+  assert.ok(!waiting.actions.includes('assign'));
+  const other = workshop.profile('mechanic2');
+  workshop.action(advisor, 2, 'park', { parking_space: 5 });
+  const transfer = workshop.action(advisor, 1, 'dispatchTransfer', { bay_id: 3, mechanic_id: other.id, instructions: 'Заменить тягу' });
+  workshop.action(other, 1, 'completeTransfer', { transfer_id: transfer.transfer.id });
+  workshop.action(other, 1, 'startRepair', {});
+  workshop.action(other, 1, 'repairReport', { result: 'Тяга заменена' });
+  assert.equal(workshop.action(advisor, 1, 'ready', {}).status, 'ready');
+});
+
+test('детали с одинаковым названием различаются по введённому артикулу производителя', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const stockkeeper = workshop.profile('stockkeeper');
+  const part = { kind: 'custom_part', name: 'Фильтр производителя', quantity: 1, price: 350 };
+  workshop.action(advisor, 3, 'receive', { mileage: 62000 });
+  assert.throws(() => workshop.action(advisor, 3, 'estimate', { version: 0, lines: [part] }), /Артикул производителя/);
+  workshop.restock(stockkeeper, { part_id: 'new', sku: ' abc-123 ', name: part.name, quantity: 4, price: 350, note: 'Накладная' });
+  const updated = workshop.action(advisor, 3, 'estimate', { version: 0, lines: [
+    { ...part, sku: ' ABC-123 ' }, { ...part, sku: 'ABC-124' },
+  ] });
+  const [first, second] = updated.work_orders[0].lines;
+  assert.notEqual(first.part_id, second.part_id);
+  assert.throws(() => workshop.setPartNumber(advisor, first.part_id, { sku: 'ZX-10' }), { status: 403 });
+  assert.throws(() => workshop.setPartNumber(stockkeeper, second.part_id, { sku: 'abc-123' }), { status: 409 });
+  workshop.setPartNumber(stockkeeper, first.part_id, { sku: 'ZX-10' });
+  assert.deepEqual(workshop.dashboard(stockkeeper).warehouse_needs.filter(row => row.request_id === 3)
+    .map(row => [row.sku, row.stock]).sort(), [['ABC-124', 0], ['ZX-10', 4]]);
 });

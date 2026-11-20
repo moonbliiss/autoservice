@@ -1,4 +1,14 @@
-.section-gap { height: 13px; }
-.shift-presence { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 13px; padding: 0; list-style: none; }
+.shift-presence { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .shift-presence li { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: .88rem; }
 .shift-presence li > span:last-child { color: var(--muted); }
+
+.shift-toolbar { max-width: min(425px, calc(100% - 30px)); pointer-events: none; }
+.shift-task { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: .86rem; }
+.shift-task h2 { font-size: .95rem; }
+.shift-task button { pointer-events: auto; }
+.shift-task .primary { min-height: 30px; padding: 4px 8px; margin: 3px 8px 0 0; }
+@media (max-width: 460px) {
+  .shift-toolbar .shift-presence { gap: 4px; }
+  .shift-toolbar .shift-presence li { gap: 4px; padding: 2px 4px; font-size: .73rem; }
+  .shift-toolbar .shift-task { padding: 4px 6px; }
+}

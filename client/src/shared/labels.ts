@@ -28,7 +28,8 @@ export const actionLabels = {
   dispatchTransfer: 'Назначить перегон в цех', cancelTransfer: 'Отменить перегон', completeTransfer: 'Машина на посту',
   classifyLine: 'Уточнить тип позиции заказ-наряда',
   arrivalPark: 'Указать место на клиентской стоянке', leaveArrival: 'Освободить место на стоянке',
+  setPartNumber: 'Изменить артикул производителя',
   warehouseIssue: 'Выдать запчасть', orderSupply: 'Заказать запчасть', receiveSupply: 'Принять поставку',
-} satisfies Record<RequestAction | 'newRequest' | 'restock' | 'orderSupply' | 'receiveSupply' | 'warehouseIssue', string>
+} satisfies Record<RequestAction | 'newRequest' | 'restock' | 'orderSupply' | 'receiveSupply' | 'warehouseIssue' | 'setPartNumber', string>
 
 export const paymentLabels = { cash: 'Наличные', card: 'Карта', transfer: 'Перевод' } satisfies Record<PaymentMethod, string>
