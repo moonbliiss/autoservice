@@ -2,12 +2,14 @@ import type { RequestAction, RequestDetail, Role } from '../../api/types'
 import { code, dateOnly, dateTime, money, number } from '../../shared/format'
 import { actionLabels, paymentLabels } from '../../shared/labels'
 import { Button, Heading, Panel } from '../../shared/ui'
+import { ParkingStatus } from './ParkingStatus'
 import { StatusTag } from './status'
 import './request-details.css'
 
 const actionOrder: RequestAction[] = [
   'receive', 'schedule', 'cancel', 'diagnose', 'startDiagnosis', 'diagnosisReport', 'estimate',
-  'approve', 'decline', 'assign', 'startRepair', 'resume', 'repairReport', 'pause', 'release', 'ready', 'rework', 'returnCar', 'payment', 'issue',
+  'approve', 'decline', 'recordDecision', 'assign', 'startRepair', 'resume', 'repairReport', 'park', 'moveBay',
+  'pause', 'release', 'ready', 'rework', 'returnCar', 'payment', 'issue',
 ]
 
 function EstimatePanel({ row, role }: { row: RequestDetail; role: Role }) {
@@ -51,6 +53,9 @@ function actionTitle(action: RequestAction, row: RequestDetail) {
   if (action === 'schedule' && row.appointment) return 'Перенести визит'
   if (action === 'estimate' && row.estimate_version) return 'Пересмотреть смету'
   if (action === 'assign' && row.status === 'repair_assigned') return 'Изменить назначение'
+  if (action === 'assign' && row.status === 'waiting_parts') return 'Вернуть с парковки в цех'
+  if (action === 'diagnose' && row.status === 'diagnosis_assigned') return 'Изменить назначение диагностики'
+  if (action === 'park' && row.parking_space) return 'Изменить место или срок поставки'
   return actionLabels[action]
 }
 
@@ -75,6 +80,8 @@ export function RequestDetails({ row, role, onAction, onBack }: {
       action={<StatusTag status={row.status} />} />
     <div className="detail-grid">
       <div className="column">
+        <ParkingStatus {...row} />
+        {role === 'client' && row.visit_note && <Panel inset title="Информация о визите"><p>{row.visit_note}</p></Panel>}
         {row.work_instructions && role !== 'client' && <Panel inset title={row.bay_id ? `Пост ${row.bay_id} · ${row.bay_name}` : 'Последнее задание'}>
           <p className="request-text">{row.work_instructions}</p>
           {expected && <p className="job-output muted">{expected}</p>}
@@ -86,6 +93,10 @@ export function RequestDetails({ row, role, onAction, onBack }: {
           )}</dl>
           {row.intake_note && <p className="request-text meta">Приёмка: {row.intake_note}</p>}
           {row.inspection_note && <p className="request-text meta">Контроль качества: {row.inspection_note}</p>}
+          {row.tracking_token && <p className="tracking-link">
+            <a href={`/tracking#${row.tracking_token}`} target="_blank" rel="noreferrer">Страница статуса для клиента</a>
+            <span className="muted"> Доступна по ссылке на компьютере, где запущена мастерская.</span>
+          </p>}
           {actions.length > 0 && <div className="actions">{actions.map((key, index) =>
             <Button key={key} variant={index === 0 ? 'primary' : 'secondary'} onClick={() => onAction(key)}>{actionTitle(key, row)}</Button>
           )}</div>}

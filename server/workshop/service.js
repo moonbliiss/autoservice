@@ -13,6 +13,6 @@ export function openWorkshop(file) {
   const mutations = createWorkshopMutations(database, queries, account);
   database.transaction(() => seedWorkshop(database, { account, ...mutations }));
 
-  const { list, details, dashboard } = queries;
-  return { profile, list, details, dashboard, ...mutations, close: database.close };
+  const { list, details, dashboard, tracking } = queries;
+  return { profile, list, details, dashboard, tracking, ...mutations, close: database.close };
 }

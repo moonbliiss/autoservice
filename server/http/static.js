@@ -7,7 +7,7 @@ const dist = process.env.WORKSHOP_FRONTEND_DIR || fileURLToPath(new URL('../../d
 const assetTypes = { js: 'text/javascript', css: 'text/css' };
 
 function staticFile(path) {
-  if (path === '/' || path === '/index.html' || path === '/garage-map.html') return ['index.html', 'text/html'];
+  if (path === '/' || path === '/index.html' || path === '/garage-map.html' || path === '/tracking') return ['index.html', 'text/html'];
   const asset = /^\/(assets\/[\w-]+\.(js|css))$/.exec(path);
   return asset && [asset[1], assetTypes[asset[2]]];
 }

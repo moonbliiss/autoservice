@@ -4,12 +4,14 @@ import { requireValue } from './validation.js';
 export function createWorkshopQueries({ all, get }) {
   const requestSelect = `SELECT r.id, r.vehicle_id, r.description, r.priority, r.preferred_date, r.appointment,
     r.status AS request_status, r.created_at, v.model, v.plate, v.vin, v.mileage, v.client_id,
-    c.name AS client_name, c.phone AS client_phone, o.id AS order_id, COALESCE(o.status,r.status) AS status,
+    c.name AS client_name, c.phone AS client_phone, o.id AS order_id,
+    CASE WHEN p.space_id IS NOT NULL THEN 'waiting_parts' ELSE COALESCE(o.status,r.status) END AS status,
+    p.space_id AS parking_space, p.reason AS parking_reason, p.expected_date AS parts_expected_date,
     o.mechanic_id, m.name AS mechanic_name, o.bay_id, b.name AS bay_name, o.work_instructions,
     o.pause_reason, o.eta, o.estimate_version, o.inspection_note, o.intake_note
     FROM service_requests r JOIN vehicles v ON v.id=r.vehicle_id JOIN accounts c ON c.id=v.client_id
     LEFT JOIN orders o ON o.request_id=r.id LEFT JOIN accounts m ON m.id=o.mechanic_id
-    LEFT JOIN bays b ON b.id=o.bay_id`;
+    LEFT JOIN bays b ON b.id=o.bay_id LEFT JOIN parking_assignments p ON p.order_id=o.id`;
 
   function getRequest(id) {
     return get(requestSelect + ' WHERE r.id=?', id);
@@ -42,8 +44,8 @@ export function createWorkshopQueries({ all, get }) {
   }
 
   function summary(user, row) {
-    const { id, model, plate, status, priority, appointment, created_at, eta, bay_id } = row;
-    return { id, model, plate, status, priority, appointment, created_at, eta,
+    const { id, model, plate, status, priority, appointment, created_at, eta, bay_id, parking_space } = row;
+    return { id, model, plate, status, priority, appointment, created_at, eta, parking_space,
       ...(user.role !== 'client' ? { bay_id } : {}),
       ...(user.role === 'mechanic' ? { assigned_to_me: row.mechanic_id === user.id } : {}),
       ...(user.role === 'advisor' ? { client_name: row.client_name, mechanic_name: row.mechanic_name } : {}) };
@@ -75,11 +77,24 @@ export function createWorkshopQueries({ all, get }) {
         ? { estimate: money.estimate.map(({ part_id, name, quantity }) => ({ part_id, name, quantity })), parts_remaining: partsRemaining }
         : money), history, reports,
       description: row.description, preferred_date: row.preferred_date, mileage: row.mileage,
+      parking_reason: row.parking_reason, parts_expected_date: row.parts_expected_date,
+      visit_note: row.status === 'scheduled' ? history.find(event => event.title === 'Назначен визит')?.note ?? null : null,
       estimate_version: row.estimate_version, actions: availableActions(user, { ...row, ...money }),
       ...(user.role === 'client' ? {} : { order_id: row.order_id, bay_name: row.bay_name, work_instructions: row.work_instructions,
         pause_reason: row.pause_reason, intake_note: row.intake_note, inspection_note: row.inspection_note }),
-      ...(user.role === 'advisor' ? { client_phone: row.client_phone, vin: row.vin, mechanic_id: row.mechanic_id } : {}),
+      ...(user.role === 'advisor' ? { client_phone: row.client_phone, vin: row.vin, mechanic_id: row.mechanic_id,
+        tracking_token: get('SELECT token FROM request_tracking WHERE request_id=?', id)?.token } : {}),
     };
+  }
+
+  function tracking(token) {
+    const record = get('SELECT request_id FROM request_tracking WHERE token=?', token);
+    requireValue(record, 'Заявка не найдена.', 404);
+    const row = getRequest(record.request_id);
+    const { id, model, status, appointment, eta, parking_space, parking_reason, parts_expected_date } = row;
+    const visit = status === 'scheduled' && get(`SELECT note FROM history
+      WHERE request_id=? AND is_public=1 AND title='Назначен визит' ORDER BY id DESC LIMIT 1`, id);
+    return { id, model, status, appointment, eta, parking_space, parking_reason, parts_expected_date, visit_note: visit?.note ?? null };
   }
 
   function dashboard(user) {
@@ -90,8 +105,14 @@ export function createWorkshopQueries({ all, get }) {
       result.bays = all(`SELECT b.id, b.name, b.id AS number, o.status, o.request_id, o.mechanic_id, v.model, a.name AS mechanic
         FROM bays b LEFT JOIN orders o ON o.bay_id=b.id LEFT JOIN service_requests r ON r.id=o.request_id
         LEFT JOIN vehicles v ON r.vehicle_id=v.id LEFT JOIN accounts a ON a.id=o.mechanic_id ORDER BY b.id`);
+      result.parking = all(`SELECT s.id, o.request_id, v.model, v.plate, p.expected_date
+        FROM parking_spaces s LEFT JOIN parking_assignments p ON p.space_id=s.id
+        LEFT JOIN orders o ON o.id=p.order_id LEFT JOIN service_requests r ON r.id=o.request_id
+        LEFT JOIN vehicles v ON v.id=r.vehicle_id ORDER BY s.id`);
       result.parts = user.role === 'advisor' ? all('SELECT * FROM parts ORDER BY id') : [];
       if (user.role === 'advisor') {
+        result.clients = all("SELECT id, name, phone FROM accounts WHERE role='client' ORDER BY name,id");
+        result.vehicles = all('SELECT id, client_id, model, plate, mileage FROM vehicles ORDER BY model,id');
         result.mechanics = all("SELECT id, name FROM accounts WHERE role='mechanic' ORDER BY id");
         result.services = all('SELECT * FROM services ORDER BY id');
         result.movements = all(`SELECT s.quantity, s.note, s.created_at, p.name, a.name AS employee FROM stock_movements s
@@ -106,5 +127,5 @@ export function createWorkshopQueries({ all, get }) {
     return result;
   }
 
-  return { getRequest, permitted, estimateRows, amounts, list, details, dashboard };
+  return { getRequest, permitted, estimateRows, amounts, list, details, dashboard, tracking };
 }

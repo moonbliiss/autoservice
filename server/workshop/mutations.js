@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { availableActions, transitions } from './rules.js';
 import { date, integer, requireValue, str } from './validation.js';
 
@@ -9,25 +10,41 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
   }
 
   function createRequest(user, input) {
-    requireValue(user.role === 'client', 'Оставить заявку может клиент.', 403);
+    const advisor = user.role === 'advisor';
+    requireValue(advisor || user.role === 'client', 'Создать заявку может клиент или приёмщик.', 403);
     return transaction(() => {
+      let clientId = user.id;
+      if (advisor) {
+        if (input.client_id) {
+          clientId = integer(input.client_id, 'Клиент');
+          requireValue(account(clientId)?.role === 'client', 'Выберите клиента из списка.');
+        } else {
+          const name = str(input.client_name, 'Имя клиента', { limit: 100 });
+          const phone = str(input.client_phone, 'Телефон клиента', { limit: 40 });
+          requireValue(phone.replace(/\D/g, '').length >= 5, 'Укажите номер телефона клиента.');
+          clientId = run("INSERT INTO accounts(role,name,phone) VALUES ('client',?,?)", name, phone).lastInsertRowid;
+        }
+      }
       let vehicleId;
       if (input.vehicle_id) {
         vehicleId = integer(input.vehicle_id, 'Автомобиль');
-        requireValue(get('SELECT id FROM vehicles WHERE id=? AND client_id=?', vehicleId, user.id), 'Автомобиль не найден.', 404);
+        requireValue(get('SELECT id FROM vehicles WHERE id=? AND client_id=?', vehicleId, clientId), 'Автомобиль не найден у выбранного клиента.', 404);
       } else {
         const model = str(input.model, 'Марка и модель', { limit: 80 });
         const plate = str(input.plate, 'Госномер', { limit: 18 }).toUpperCase().replace(/\s/g, '');
         const vin = str(input.vin, 'VIN', { optional: true, limit: 17 })?.toUpperCase() || null;
         requireValue(!vin || /^[A-HJ-NPR-Z0-9]{17}$/.test(vin), 'VIN должен содержать 17 допустимых символов.');
-        requireValue(!get('SELECT id FROM vehicles WHERE client_id=? AND plate=?', user.id, plate), 'Автомобиль с этим госномером уже есть в профиле.');
-        vehicleId = run('INSERT INTO vehicles(client_id,model,plate,vin) VALUES (?,?,?,?)', user.id, model, plate, vin).lastInsertRowid;
+        requireValue(!get('SELECT id FROM vehicles WHERE client_id=? AND plate=?', clientId, plate), 'Автомобиль с этим госномером уже есть у клиента.');
+        vehicleId = run('INSERT INTO vehicles(client_id,model,plate,vin) VALUES (?,?,?,?)', clientId, model, plate, vin).lastInsertRowid;
       }
       const description = str(input.description, 'Что нужно проверить');
       const preferred = date(input.preferred_date, 'Желаемая дата', true);
       const id = run("INSERT INTO service_requests(vehicle_id,description,preferred_date,status) VALUES (?,?,?,'new')",
         vehicleId, description, preferred).lastInsertRowid;
-      addHistory(id, user, 'Заявка отправлена', 'Мастер-приёмщик уточнит время визита.');
+      if (advisor) run('INSERT INTO request_tracking(request_id,token) VALUES (?,?)', id, randomBytes(24).toString('hex'));
+      addHistory(id, user, advisor ? 'Заявка оформлена приёмщиком' : 'Заявка отправлена',
+        advisor && input.accept_now === 'yes' ? null : 'Мастер-приёмщик уточнит время визита.');
+      if (advisor && input.accept_now === 'yes') return action(user, id, 'receive', input);
       return details(user, id);
     });
   }
@@ -42,12 +59,29 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     const mechanicId = integer(input.mechanic_id, 'Механик');
     const bayId = integer(input.bay_id, 'Пост');
     requireValue(account(mechanicId)?.role === 'mechanic', 'Выберите механика из списка.');
-    requireValue(get('SELECT id FROM bays WHERE id=?', bayId), 'Выберите существующий пост.');
+    const bay = get('SELECT name FROM bays WHERE id=?', bayId);
+    requireValue(bay, 'Выберите существующий пост.');
     requireValue(!get('SELECT 1 FROM orders WHERE bay_id=? AND id<>?', bayId, row.order_id), 'Этот пост уже занят.', 409);
     requireValue(!get('SELECT 1 FROM orders WHERE mechanic_id=? AND bay_id IS NOT NULL AND id<>?', mechanicId, row.order_id),
       'Механик уже работает на другом посту.', 409);
     updateOrder(row, status, { mechanic_id: mechanicId, bay_id: bayId,
       work_instructions: str(input.instructions, 'Задача и ожидаемый результат'), pause_reason: null });
+    if (row.parking_space) run('DELETE FROM parking_assignments WHERE order_id=?', row.order_id);
+    return `Пост ${bayId} · ${bay.name}.`;
+  }
+
+  function parkOrder(row, input) {
+    const space = integer(input.parking_space, 'Место на парковке');
+    requireValue(get('SELECT id FROM parking_spaces WHERE id=?', space), 'Выберите существующее место на парковке.');
+    requireValue(!get('SELECT 1 FROM parking_assignments WHERE space_id=? AND order_id<>?', space, row.order_id),
+      'Это место на парковке уже занято.', 409);
+    const reason = str(input.parking_reason, 'Какие запчасти ожидаются', { limit: 600 });
+    const expected = date(input.parts_expected_date, 'Ожидаемая дата поставки', true);
+    run(`INSERT INTO parking_assignments(order_id,space_id,reason,expected_date) VALUES (?,?,?,?)
+      ON CONFLICT(order_id) DO UPDATE SET space_id=excluded.space_id, reason=excluded.reason, expected_date=excluded.expected_date`,
+    row.order_id, space, reason, expected);
+    run('UPDATE orders SET bay_id=NULL WHERE id=?', row.order_id);
+    return `Место ${space}. ${reason}${expected ? ` · Ожидаемая поставка: ${expected}` : ''}`;
   }
 
   function saveReport(user, row, input, kind) {
@@ -105,8 +139,9 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
       switch (key) {
         case 'schedule': {
           const appointment = date(input.appointment, 'Время визита', false, true);
+          const directions = str(input.arrival_instructions, 'Куда заехать', { optional: true, limit: 600 });
           run("UPDATE service_requests SET status='scheduled',appointment=? WHERE id=?", appointment, id);
-          note = `Время визита: ${appointment.replace('T', ' ')}.`;
+          note = `Время визита: ${appointment.replace('T', ' ')}.${directions ? ` Куда заехать: ${directions}` : ''}`;
           break;
         }
         case 'cancel':
@@ -122,7 +157,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           run("INSERT INTO orders(request_id,advisor_id,status,intake_note) VALUES (?,?,'received',?)", id, user.id, intake);
           break;
         }
-        case 'diagnose': assignOrder(row, input, 'diagnosis_assigned'); break;
+        case 'diagnose': note = assignOrder(row, input, 'diagnosis_assigned'); break;
         case 'startDiagnosis': updateOrder(row, 'diagnosing'); break;
         case 'diagnosisReport':
           saveReport(user, row, input, 'diagnosis');
@@ -135,11 +170,25 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           break;
         case 'approve':
         case 'decline':
+        case 'recordDecision': {
           requireValue(integer(input.version, 'Версия сметы') === row.estimate_version, 'Смета уже изменена. Проверьте новую версию.', 409);
-          note = key === 'decline' ? str(input.note, 'Причина отказа') : null;
-          updateOrder(row, key === 'approve' ? 'approved' : 'declined');
+          const decision = key === 'recordDecision' ? input.decision : key;
+          requireValue(decision === 'approve' || decision === 'decline', 'Выберите решение клиента.');
+          if (key === 'recordDecision') {
+            const confirmation = str(input.note, 'Как клиент подтвердил своё решение');
+            note = `${decision === 'approve' ? 'Смета согласована' : 'Клиент отклонил смету'}. ${confirmation}`;
+          } else if (decision === 'decline') note = str(input.note, 'Причина отказа');
+          updateOrder(row, decision === 'approve' ? 'approved' : 'declined');
           break;
-        case 'assign': assignOrder(row, input, 'repair_assigned'); break;
+        }
+        case 'assign': note = assignOrder(row, input, 'repair_assigned'); break;
+        case 'moveBay': {
+          const stage = row.status === 'diagnosing' ? 'diagnosis_assigned'
+            : row.status === 'inspection' ? 'inspection' : 'repair_assigned';
+          note = assignOrder(row, input, stage);
+          break;
+        }
+        case 'park': note = parkOrder(row, input); break;
         case 'startRepair':
         case 'resume': updateOrder(row, 'repairing', { pause_reason: null }); break;
         case 'pause': {

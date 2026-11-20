@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS service_requests (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS request_tracking (
+  request_id INTEGER PRIMARY KEY REFERENCES service_requests(id),
+  token TEXT NOT NULL UNIQUE
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY,
   request_id INTEGER NOT NULL UNIQUE REFERENCES service_requests(id),
@@ -50,6 +55,19 @@ CREATE TABLE IF NOT EXISTS orders (
 
 CREATE UNIQUE INDEX IF NOT EXISTS active_bay ON orders(bay_id) WHERE bay_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS active_mechanic ON orders(mechanic_id) WHERE bay_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS parking_spaces (
+  id INTEGER PRIMARY KEY CHECK (id BETWEEN 1 AND 10)
+) STRICT;
+
+INSERT OR IGNORE INTO parking_spaces(id) VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10);
+
+CREATE TABLE IF NOT EXISTS parking_assignments (
+  order_id INTEGER PRIMARY KEY REFERENCES orders(id),
+  space_id INTEGER NOT NULL UNIQUE REFERENCES parking_spaces(id),
+  reason TEXT NOT NULL,
+  expected_date TEXT
+) STRICT;
 
 CREATE TABLE IF NOT EXISTS services (
   id INTEGER PRIMARY KEY,

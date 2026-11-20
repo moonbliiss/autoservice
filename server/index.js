@@ -26,6 +26,11 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && path === '/api/session') {
       return await changeSession(req, res, workshop);
     }
+    if (req.method === 'GET' && path === '/api/tracking') {
+      const token = req.headers.authorization?.match(/^Bearer ([a-f0-9]{48})$/)?.[1];
+      if (!token) fail(404, 'Заявка не найдена.');
+      return response(res, 200, workshop.tracking(token));
+    }
     const user = getSessionUser(req);
     if (!user) {
       if (path.startsWith('/api/')) fail(401, 'Выберите демонстрационный профиль.');

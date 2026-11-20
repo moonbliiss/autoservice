@@ -5,15 +5,20 @@ import { StatusTag } from './status'
 
 export type OpenRequest = (id: number) => void
 
-export function RequestTable({ requests, role, onOpen }: { requests: RequestSummary[]; role: Role; onOpen: OpenRequest }) {
+export function RequestTable({ requests, role, onOpen, empty = 'Нет заявок по выбранным условиям.', assignmentQueue = false }: {
+  requests: RequestSummary[]; role: Role; onOpen: OpenRequest; empty?: string; assignmentQueue?: boolean
+}) {
   const advisor = role === 'advisor'
   const mechanic = role === 'mechanic'
-  return <Table headings={['Заявка', 'Автомобиль', ...(advisor ? ['Клиент'] : []), 'Статус', mechanic ? 'Пост' : 'Визит']}
+  return <Table headings={['Заявка', 'Автомобиль', ...(advisor ? ['Клиент'] : []), 'Статус', mechanic ? 'Расположение' : 'Визит / расположение']}
     rows={requests.map(row => ({ key: row.id, cells: [
-      <Button variant="table-link" onClick={() => onOpen(row.id)}>{code(row.id)}</Button>,
+      <Button variant="table-link" onClick={() => onOpen(row.id)}>
+        {code(row.id)}{assignmentQueue && ' · Назначить задачу'}
+      </Button>,
       <><strong>{row.model}</strong><br /><span className="meta">{row.plate}</span></>,
       ...(advisor ? [row.client_name] : []),
       <><StatusTag status={row.status} />{row.priority === 'urgent' && <> <span className="tag alert">Срочно</span></>}</>,
-      mechanic ? (row.bay_id ? `Пост ${row.bay_id}` : '—') : dateTime(row.appointment) || '—',
-    ] }))} empty="Нет заявок по выбранным условиям." />
+      row.parking_space ? `Парковка · место ${row.parking_space}`
+        : row.bay_id ? `Пост ${row.bay_id}` : !mechanic && dateTime(row.appointment) || '—',
+    ] }))} empty={empty} />
 }

@@ -27,7 +27,7 @@ export function App() {
         : section === 'overview' ? <Overview dashboard={dashboard} selectedBay={selectedBay} onSelectBay={setSelectedBay}
           onOpen={openRequest} onNewRequest={onNewRequest} onRequests={() => navigate('requests')} />
         : section === 'requests' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
-          onSearch={setSearch} filter={filter} onFilter={setFilter} />
+          onSearch={setSearch} filter={filter} onFilter={setFilter} onNewRequest={onNewRequest} />
         : section === 'stock' ? <StockView dashboard={dashboard} onRestock={() => showAction({ key: 'restock' })} />
         : <CarsView dashboard={dashboard} onNewRequest={onNewRequest} />}
     </AppShell>

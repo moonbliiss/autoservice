@@ -186,10 +186,10 @@ function makeCar(mesh: Face[], x: number, y: number, z: number, color: string) {
 }
 
 makeBuilding();
-export const geometry = garagePosts.map((post, index) => {
+export const geometry = garagePosts.map(post => {
   const arms: Face[] = [];
   const model: Face[] = [];
-  if (index !== 2) makeLift(post.x, 0, arms);
+  makeLift(post.x, 0, arms);
   makeCar(model, post.x, 0, 0, post.color);
   return { ...post, arms, model };
 });

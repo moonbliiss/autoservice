@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Dashboard, RequestAction, RequestDetail } from '../../api/types'
 import { money } from '../../shared/format'
 import { paymentLabels } from '../../shared/labels'
+import { AdvisorRequestFields } from './AdvisorRequestFields'
 import { EstimateFields } from './EstimateFields'
 import { Field, SelectField, TextField, type Option } from './fields'
 
@@ -61,7 +62,9 @@ function ReportFields({ dashboard, row, repair }: { dashboard: Dashboard; row: R
 }
 
 export function ActionFields({ action, dashboard }: { action: FormAction; dashboard: Dashboard }) {
-  if (action.key === 'newRequest') return <NewRequestFields vehicles={dashboard.vehicles} vehicleId={action.vehicleId} />
+  if (action.key === 'newRequest') return dashboard.user.role === 'advisor'
+    ? <AdvisorRequestFields clients={dashboard.clients} vehicles={dashboard.vehicles} />
+    : <NewRequestFields vehicles={dashboard.vehicles} vehicleId={action.vehicleId} />
   if (action.key === 'restock') return <>
     <SelectField label="Запчасть" name="part_id" options={(dashboard.parts ?? []).map(part => [part.id, part.name])} />
     <Field label="Количество" name="quantity" type="number" defaultValue={1} min={1} max={10000} />
@@ -69,17 +72,41 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
   </>
   const { key, row } = action
   switch (key) {
-    case 'schedule': return <Field label="Время визита" name="appointment" type="datetime-local" defaultValue={row.appointment ?? ''} />
+    case 'schedule': return <>
+      <Field label="Время визита" name="appointment" type="datetime-local" defaultValue={row.appointment ?? ''} />
+      <TextField label="Куда заехать (сообщение клиенту)" name="arrival_instructions" required={false} maxLength={600} />
+    </>
     case 'receive': return <>
       <Field label="Пробег, км" name="mileage" type="number" defaultValue={row.mileage ?? ''} min={0} max={5000000} />
       <SelectField label="Приоритет" name="priority" options={[['normal', 'Обычный'], ['urgent', 'Срочный']]} />
       <TextField label="Состояние при приёмке и комплектность" name="note" required={false} />
     </>
     case 'diagnose':
+    case 'moveBay':
     case 'assign': return <AssignmentFields dashboard={dashboard} row={row} />
+    case 'park': {
+      const spaces = (dashboard.parking ?? []).filter(space => !space.request_id || space.request_id === row.id)
+      return <>
+        {spaces.length ? <p>Автомобиль будет ждать запчасти на парковке. Пост и механик освободятся.</p>
+          : <p>Все места на парковке заняты.</p>}
+        <SelectField label="Место на парковке" name="parking_space" defaultValue={row.parking_space ?? ''}
+          options={ [['', 'Выберите место'], ...spaces.map((space): Option => [space.id, `Место ${space.id}`])] } />
+        <TextField label="Какие запчасти ожидаются (видно клиенту)" name="parking_reason" maxLength={600}
+          defaultValue={row.parking_reason ?? ''} />
+        <Field label="Ожидаемая дата поставки" name="parts_expected_date" type="date" required={false}
+          defaultValue={row.parts_expected_date ?? ''} />
+      </>
+    }
     case 'estimate': return <EstimateFields dashboard={dashboard} row={row} />
     case 'approve': return <p>Подтвердите смету версии {row.estimate_version} на сумму <strong>{money(row.total ?? 0)}</strong>.</p>
     case 'decline': return <TextField label="Причина отказа или что нужно изменить" name="note" />
+    case 'recordDecision': return <>
+      <p>Смета версии {row.estimate_version} на сумму <strong>{money(row.total ?? 0)}</strong>.</p>
+      <SelectField label="Решение клиента" name="decision" options={[
+        ['', 'Выберите решение'], ['approve', 'Согласовал смету'], ['decline', 'Отклонил смету'],
+      ]} />
+      <TextField label="Как клиент подтвердил своё решение" name="note" />
+    </>
     case 'startDiagnosis': return <p>Зафиксировать начало диагностики на назначенном посту?</p>
     case 'startRepair': return <p>Зафиксировать начало работы на назначенном посту?</p>
     case 'resume': return <p>Вернуть заказ в работу?</p>

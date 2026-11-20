@@ -16,5 +16,7 @@
 .report + .report { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
 .report h3 { margin-bottom: 4px; }
 .report p + p { margin-top: 4px; }
+.tracking-link { margin-top: 13px; font-size: .9rem; }
+.tracking-link a { color: var(--green); font-weight: 650; }
 
 @media (max-width: 600px) { .detail-grid { grid-template-columns: 1fr; } }

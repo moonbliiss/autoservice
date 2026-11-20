@@ -1,16 +1,16 @@
 import type { Dashboard } from '../../api/types'
 import { code } from '../../shared/format'
 import { statusLabels } from '../../shared/labels'
-import { Heading, Panel } from '../../shared/ui'
+import { Button, Heading, Panel } from '../../shared/ui'
 import { RequestTable, type OpenRequest } from './RequestTable'
 import { closedStatuses } from './status'
 import './request-list.css'
 
 const filters = { all: 'Все статусы', open: 'Открытые', closed: 'Завершённые', ...statusLabels }
 
-export function RequestList({ dashboard, onOpen, search, onSearch, filter, onFilter }: {
+export function RequestList({ dashboard, onOpen, search, onSearch, filter, onFilter, onNewRequest }: {
   dashboard: Dashboard; onOpen: OpenRequest; search: string; onSearch: (value: string) => void;
-  filter: string; onFilter: (value: string) => void
+  filter: string; onFilter: (value: string) => void; onNewRequest: () => void
 }) {
   const needle = search.trim().toLocaleLowerCase('ru')
   const rows = dashboard.requests.filter(row => (
@@ -19,7 +19,8 @@ export function RequestList({ dashboard, onOpen, search, onSearch, filter, onFil
   ) && [row.model, row.plate, code(row.id), row.client_name].some(value => value?.toLocaleLowerCase('ru').includes(needle)))
   return <>
     <Heading title={dashboard.user.role === 'mechanic' ? 'Мои задачи' : 'Заказы и заявки'}
-      subtitle="Найдите заявку по автомобилю, номеру или этапу." />
+      subtitle="Найдите заявку по автомобилю, номеру или этапу."
+      action={dashboard.user.role === 'advisor' && <Button variant="primary" onClick={onNewRequest}>Новая заявка</Button>} />
     <Panel title="Журнал">
       <div className="tool-row">
         <input id="search" type="search" aria-label="Поиск по заявкам" placeholder="Поиск по заявкам"

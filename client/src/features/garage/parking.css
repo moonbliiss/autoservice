@@ -1,0 +1,27 @@
+.parking-panel { margin-bottom: 14px; }
+.parking-lot {
+  display: grid;
+  gap: 20px;
+  padding: 8px 16px 16px;
+  background: linear-gradient(transparent calc(50% - 1px), #d9dfd3 calc(50% - 1px), #d9dfd3 calc(50% + 1px), transparent calc(50% + 1px));
+}
+.parking-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.parking-space {
+  display: grid;
+  align-content: start;
+  gap: 1px;
+  min-width: 0;
+  min-height: 70px;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px dashed #a7b3a4;
+  border-radius: 6px;
+  background: #f6f7f2;
+  color: var(--muted);
+  font-size: .82rem;
+  text-align: left;
+}
+.parking-space.occupied { color: var(--ink); border-style: solid; border-color: #bba16e; background: #f5ecd9; }
+.parking-space span, .parking-space small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parking-space strong { font-variant-numeric: tabular-nums; }
+button.parking-space:hover { background: #f0e0bd; }

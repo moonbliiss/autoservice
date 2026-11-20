@@ -8,7 +8,9 @@ function submissionFor(action: FormAction, form: HTMLFormElement): Submission {
   const fields = new FormData(form)
   if (action.key === 'newRequest' && fields.get('vehicle_id') === 'new') fields.delete('vehicle_id')
   const data: Submission = Object.fromEntries(fields)
-  if (action.key === 'estimate' || action.key === 'approve' || action.key === 'decline') data.version = action.row.estimate_version
+  if (action.key === 'estimate' || action.key === 'approve' || action.key === 'decline' || action.key === 'recordDecision') {
+    data.version = action.row.estimate_version
+  }
   if (action.key === 'estimate') {
     const names = fields.getAll('name')
     const quantities = fields.getAll('quantity')
@@ -54,7 +56,8 @@ export function ActionDialog({ action, dashboard, busy, error, onClose, onSubmit
     if (!busy) onClose()
   }
 
-  const submitLabel = action.key === 'newRequest' ? 'Отправить заявку' : action.key === 'estimate' ? 'Отправить смету'
+  const submitLabel = action.key === 'newRequest' ? (dashboard.user.role === 'advisor' ? 'Оформить заявку' : 'Отправить заявку')
+    : action.key === 'estimate' ? 'Отправить смету'
     : action.key === 'diagnosisReport' || action.key === 'repairReport' ? 'Отправить отчёт' : 'Подтвердить'
   return <dialog ref={dialog} id="dialog" aria-labelledby="dialog-title" onCancel={event => { event.preventDefault(); close() }}>
     <form id="form" onSubmit={submit}>

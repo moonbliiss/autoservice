@@ -3,6 +3,7 @@ import { Button, Heading, Metrics, Panel } from '../../shared/ui'
 import { StatusTag, closedStatuses, workshopStatuses } from '../requests/status'
 import { RequestTable, type OpenRequest } from '../requests/RequestTable'
 import { WorkshopFloor } from '../garage/WorkshopFloor'
+import { ParkingLot } from '../garage/ParkingLot'
 import './overview.css'
 
 export function Overview({ dashboard, selectedBay, onSelectBay, onOpen, onNewRequest, onRequests }: {
@@ -21,6 +22,7 @@ export function Overview({ dashboard, selectedBay, onSelectBay, onOpen, onNewReq
     <Panel title="История обслуживания"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
   </>
   const floor = <WorkshopFloor dashboard={dashboard} selectedBay={selectedBay} onOpen={onOpen} onSelectBay={onSelectBay} />
+  const parking = <ParkingLot spaces={dashboard.parking ?? []} visibleRequests={new Set(requests.map(row => row.id))} onOpen={onOpen} />
   if (role === 'mechanic') {
     const active = requests.find(row => workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me)
     return <>
@@ -29,17 +31,22 @@ export function Overview({ dashboard, selectedBay, onSelectBay, onOpen, onNewReq
         <div className="split"><div><strong>{active.model}</strong><p className="muted">{active.plate}</p></div><StatusTag status={active.status} /></div>
         <div className="actions"><Button variant="primary" onClick={() => onOpen(active.id)}>Открыть задачу</Button></div>
       </Panel> : <Panel inset title="Текущий пост"><p className="muted">Активного назначения пока нет.</p></Panel>}
-      <div className="section-gap" />{floor}
+      <div className="section-gap" />{floor}{parking}
       <Panel title="Задачи смены"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
     </>
   }
+  const unassigned = requests.filter(row => row.status === 'received' || row.status === 'approved' || row.status === 'paused' && !row.bay_id)
   return <>
-    <Heading title="Карта сервиса" subtitle="Загрузка цеха и движение заказов" eyebrow="РАБОЧЕЕ МЕСТО ПРИЁМЩИКА" />
+    <Heading title="Карта сервиса" subtitle="Загрузка цеха и движение заказов" eyebrow="РАБОЧЕЕ МЕСТО ПРИЁМЩИКА"
+      action={<Button variant="primary" onClick={onNewRequest}>Новая заявка</Button>} />
     <Metrics items={[
       ['Новые заявки', requests.filter(row => row.status === 'new').length],
       ['Занятые посты', `${bays.filter(bay => bay.status).length} / ${bays.length}`], ['Готовы к выдаче', ready],
     ]} />
-    {floor}
+    {floor}{parking}
+    <Panel title="Ждут назначения в цех">
+      <RequestTable requests={unassigned} role={role} onOpen={onOpen} assignmentQueue empty="Все принятые автомобили распределены." />
+    </Panel>
     <Panel title="Недавние заявки" action={<Button variant="text-button" onClick={onRequests}>Все заявки</Button>}>
       <RequestTable requests={requests.slice(0, 5)} role={role} onOpen={onOpen} />
     </Panel>

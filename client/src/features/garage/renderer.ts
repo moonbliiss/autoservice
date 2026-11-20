@@ -117,7 +117,7 @@ export function mountGarage(
       }
     };
     add(fixtures);
-    for (const [index, post] of posts.entries()) {
+    for (const post of posts) {
       let travel = 0;
       let occupancy = Number(post.busy);
       if (post.transition) {
@@ -129,7 +129,7 @@ export function mountGarage(
         if (progress === 1) post.transition = null;
         else scheduleDraw();
       }
-      const lift = index === 1 ? Math.max(0, occupancy - .56) * 1.45 : 0;
+      const lift = Math.max(0, occupancy - .56) * 1.45;
       if (post.busy || post.transition) {
         drawShadow(cam, post.x, travel, 1.63, 2.65, .31);
         add(post.model, lift, travel);

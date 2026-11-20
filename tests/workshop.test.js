@@ -91,3 +91,86 @@ test('отмена визита, возврат без ремонта и поп�
   assert.equal(workshop.restock(advisor, { part_id: 2, quantity: 5, note: 'Накладная 842' }).stock, 13);
   assert.equal(workshop.dashboard(advisor).movements[0].note, 'Накладная 842');
 });
+
+test('приёмщик оформляет очный визит, распределяет работы и освобождает пост на время поставки', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const mechanic = workshop.profile('mechanic2');
+  const customer = workshop.profile('client2');
+  const other = workshop.profile('client');
+  assert.deepEqual(workshop.dashboard(advisor).parking.map(space => space.id), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+  const activeId = workshop.dashboard(customer).requests.find(row => row.status === 'repairing').id;
+  const park = { parking_space: 10, parking_reason: 'Ожидается масляный фильтр', parts_expected_date: '2027-06-12' };
+  assert.throws(() => workshop.action(mechanic, activeId, 'park', park), { status: 409 });
+  assert.throws(() => workshop.action(advisor, activeId, 'park', { ...park, parking_space: 11 }), { status: 400 });
+  const parked = workshop.action(advisor, activeId, 'park', park);
+  assert.equal(parked.status, 'waiting_parts');
+  assert.equal(parked.bay_id, null);
+  assert.equal(workshop.dashboard(advisor).bays.find(bay => bay.id === 2).request_id, null);
+  assert.equal(workshop.dashboard(customer).requests.find(row => row.id === activeId).parking_space, 10);
+  assert.equal(workshop.details(customer, activeId).parts_expected_date, '2027-06-12');
+  assert.throws(() => workshop.details(other, activeId), { status: 404 });
+  assert.ok(!workshop.details(mechanic, activeId).actions.includes('startRepair'));
+
+  const walkIn = {
+    client_name: 'Сергей Петров', client_phone: '+7 900 555-01-02', model: 'Ford Focus',
+    plate: 'а123вс55', description: 'Вибрация при торможении', accept_now: 'yes',
+    mileage: 123000, priority: 'urgent', note: 'Принят один ключ',
+  };
+  assert.throws(() => workshop.createRequest(advisor, { ...walkIn, mileage: -1 }), { status: 400 });
+  assert.ok(!workshop.dashboard(advisor).clients.some(client => client.name === walkIn.client_name));
+  assert.throws(() => workshop.createRequest(mechanic, walkIn), { status: 403 });
+  const order = workshop.createRequest(advisor, walkIn);
+  assert.equal(order.status, 'received');
+  assert.equal(order.client_phone, walkIn.client_phone);
+  assert.equal(order.intake_note, walkIn.note);
+  assert.equal(order.plate, 'А123ВС55');
+  assert.match(order.tracking_token, /^[a-f0-9]{48}$/);
+  assert.throws(() => workshop.tracking('0'.repeat(48)), { status: 404 });
+  assert.deepEqual(Object.keys(workshop.tracking(order.tracking_token)).sort(),
+    ['appointment', 'eta', 'id', 'model', 'parking_reason', 'parking_space', 'parts_expected_date', 'status', 'visit_note']);
+
+  const assign = (bay_id, instructions) => ({ bay_id, mechanic_id: mechanic.id, instructions });
+  workshop.action(advisor, order.id, 'diagnose', assign(2, 'Проверить тормозную систему'));
+  assert.equal(workshop.details(mechanic, order.id).work_instructions, 'Проверить тормозную систему');
+  workshop.action(mechanic, order.id, 'startDiagnosis', {});
+  workshop.action(advisor, order.id, 'moveBay', assign(3, 'Измерить биение дисков'));
+  assert.equal(workshop.details(mechanic, order.id).status, 'diagnosis_assigned');
+  workshop.action(mechanic, order.id, 'startDiagnosis', {});
+  workshop.action(mechanic, order.id, 'diagnosisReport', { result: 'Диски требуют замены', minutes: 20 });
+  workshop.action(advisor, order.id, 'estimate', { version: 0,
+    lines: [{ kind: 'custom', name: 'Замена дисков', quantity: 1, price: 4300 }] });
+  const decision = { decision: 'approve', note: 'Клиент согласовал по телефону' };
+  assert.throws(() => workshop.action(advisor, order.id, 'recordDecision', { ...decision, version: 2 }), { status: 409 });
+  workshop.action(advisor, order.id, 'recordDecision', { ...decision, version: 1 });
+  workshop.action(advisor, order.id, 'assign', assign(3, 'Заменить диски и проверить тормоза'));
+  assert.throws(() => workshop.action(advisor, order.id, 'park', park), { status: 409 });
+  assert.equal(workshop.details(mechanic, order.id).bay_id, 3);
+  workshop.action(advisor, order.id, 'park', { ...park, parking_space: 1 });
+  assert.equal(workshop.tracking(order.tracking_token).parking_space, 1);
+  workshop.action(advisor, order.id, 'park', { ...park, parking_space: 2 });
+  assert.equal(workshop.dashboard(advisor).parking[0].request_id, null);
+  const returned = workshop.action(advisor, order.id, 'assign', assign(3, 'Продолжить замену дисков'));
+  assert.equal(returned.status, 'repair_assigned');
+  assert.equal(returned.parking_space, null);
+  assert.equal(workshop.dashboard(advisor).parking[1].request_id, null);
+  assert.equal(workshop.action(mechanic, order.id, 'startRepair', {}).status, 'repairing');
+});
+
+test('заявка приёмщика для существующего клиента появляется в его кабинете', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const customer = workshop.profile('client');
+  const vehicle = workshop.dashboard(customer).vehicles[0];
+  assert.throws(() => workshop.createRequest(advisor, { client_id: 4, vehicle_id: vehicle.id, description: 'Проверка' }),
+    { status: 404 });
+  const order = workshop.createRequest(advisor, { client_id: customer.id, vehicle_id: vehicle.id, description: 'Проверка' });
+  assert.equal(order.status, 'new');
+  workshop.action(advisor, order.id, 'schedule', { appointment: '2027-06-12T10:00', arrival_instructions: 'Заезд через правые ворота' });
+  assert.match(workshop.details(customer, order.id).history[0].note, /через правые ворота/);
+  assert.match(workshop.tracking(order.tracking_token).visit_note, /через правые ворота/);
+  assert.equal(workshop.details(customer, order.id).tracking_token, undefined);
+});
