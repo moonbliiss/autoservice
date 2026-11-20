@@ -1,4 +1,4 @@
-import { arrivalLocations, desks, garagePosts, parkingAisle, parkingDepth, parkingEntrance, parkingLocations, parkingWidth, parkingZones, siteBounds } from './mapLayout';
+import { desks, garagePosts, parkingAisle, parkingDepth, parkingEntrance, parkingLocations, parkingZones, siteBounds, workshopAisle } from './mapLayout';
 
 export type Point = [number, number, number];
 export interface Face { points: Point[]; color: string; stroke: string | null; center: Point }
@@ -53,37 +53,30 @@ function cylinder(mesh: Face[], x: number, y: number, z: number, radius: number,
   }
 }
 
-function makeBuilding() {
-  box(ground, -10.4, -.65, -5.9, 20.8, .58, 13.2, '#575b54');
-  flat(ground, -10.39, -.06, -5.89, 20.78, 13.18, '#8c8c80');
-  for (let x = 0; x < 24; x++) {
-    for (let z = 0; z < 14; z++) {
-      const tone = ['#a9aaa0', '#a6a79d', '#abaca1', '#a8a99f'][(x * 3 + z * 5 + x * z) % 4];
-      flat(ground, -9.58 + x * .798, 0, -5.12 + z * .803, .788, .792, tone);
-    }
-  }
-  flat(ground, -9.6, .005, 6.2, 19.2, .72, '#595d55');
-  for (let x = -9; x < 9.6; x += .57) {
-    flat(ground, x, .008, 6.53, .27, .08, '#d0ad63');
-  }
+const concrete = '#c5c9c6';
+const concreteJoint = '#afb7b3';
+const asphalt = '#67737b';
+const wall = '#e1e5df';
+const trim = '#526570';
 
-  for (let segment = 0; segment < 12; segment++) {
-    const x = -9.69 + segment * 1.61;
-    box(fixtures, x, 0, -5.44, 1.606, .71, .35, '#646c61');
-    box(fixtures, x, .71, -5.44, 1.606, .09, .35, '#b76b44');
-    box(fixtures, x, .8, -5.44, 1.606, 2.35, .35, '#e5dfc8');
-    box(fixtures, x, 3.15, -5.47, 1.606, .13, .41, '#5f655a');
+function makeBuilding() {
+  const left = -10.4, back = -5.9, width = 20.8, depth = 11.3;
+  box(ground, left, -.25, back, width, .25, depth, '#9da7a5');
+  flat(ground, left, .004, back, width, depth, concrete);
+  for (const x of [-9.65, -3.02, 3.02, 9.65]) {
+    flat(ground, x, .007, back + .38, .042, depth - .39, concreteJoint);
   }
-  for (let segment = 0; segment < 11; segment++) {
-    const z = -5.09 + segment * .83;
-    box(fixtures, -9.7, 0, z, .34, .71, .827, '#646c61');
-    box(fixtures, -9.7, .71, z, .34, .09, .827, '#b76b44');
-    box(fixtures, -9.7, .8, z, .34, 2.35, .827, '#ddd8c4');
-    box(fixtures, -9.73, 3.15, z, .4, .13, .827, '#5f655a');
-  }
+  flat(ground, left + .38, .007, 4.85, width - .76, .032, concreteJoint);
+
+  box(fixtures, -9.72, 0, -5.51, 19.44, 3.23, .43, wall);
+  box(fixtures, -9.72, 0, -5.063, 19.44, .61, .038, '#788a8e');
+  box(fixtures, -9.74, 3.18, -5.55, 19.48, .13, .53, trim);
+  box(fixtures, -9.72, 0, -5.08, .34, 3.23, 7.05, wall);
+  box(fixtures, -9.38, 0, -5.08, .042, .61, 7.05, '#788a8e');
+  box(fixtures, -9.75, 3.18, -5.08, .43, .13, 7.05, trim);
   for (const x of [-6.05, 0, 6.05]) {
     const frameX = x - 1.48;
-    box(fixtures, frameX, 1.75, -5.08, 2.96, 1.02, .12, '#555e59');
+    box(fixtures, frameX, 1.75, -5.08, 2.96, 1.02, .12, trim);
     for (let i = 0; i < 3; i++) {
       const paneX = frameX + .08 + i * .94;
       box(fixtures, paneX, 1.82, -4.95, .9, .88, .025, '#92a8a7');
@@ -127,9 +120,9 @@ function makeLift(x: number, y: number, mesh: Face[]) {
   for (const side of [-1, 1]) {
     const column = x + side * 1.74;
     box(fixtures, column - .27, .02, -.32, .54, .10, .66, '#4a5046');
-    box(fixtures, column - .14, .12, -.16, .28, 2.42, .34, '#ce9451');
+    box(fixtures, column - .14, .12, -.16, .28, 2.42, .34, '#bb8844');
     box(fixtures, column - .17, 2.50, -.19, .34, .12, .40, '#4c5449');
-    box(fixtures, column - .07, .6, .185, .14, 1.62, .025, '#766645');
+    box(fixtures, column - .07, .6, .185, .14, 1.62, .025, '#5b6668');
     const inward = x + side * .96;
     box(mesh, Math.min(column, inward), y + .12, -.12, Math.abs(column - inward), .12, .26, '#9c6f44');
     box(mesh, inward - .075, y + .12, -.90, .15, .09, 1.80, '#b47f49');
@@ -183,35 +176,59 @@ function makeCar(mesh: Face[], x: number, y: number, z: number, color: string) {
 
 function makeSite() {
   const { left, right, back, front } = siteBounds;
-  box(ground, left, -.93, back, right - left, .70, front - back, '#5e6b64');
-  flat(ground, left + .03, -.216, back + .03, right - left - .06, front - back - .06, '#b9c0b5');
-  flat(ground, parkingEntrance - 1.8, -.18, back + .4, 3.6, front - back - .8, '#77827d');
-  flat(ground, -8, -.17, parkingAisle - 2.5, parkingEntrance + 8.8, 5, '#77827d');
-  flat(ground, -10.35, -.17, 5.6, parkingEntrance + 11.95, 3.65, '#77827d');
-  for (let z = back + 1; z < front - 1; z += 2.4) {
-    flat(ground, parkingEntrance - .027, -.164, z, .054, 1.04, '#c8c8af');
-  }
-  for (let x = -7.4; x < parkingEntrance - 2; x += 1.8) {
-    flat(ground, x, -.163, parkingAisle, .84, .06, '#c8c8af');
-  }
+  const roadLeft = parkingEntrance - 1.25;
+  const roadRight = right - .18;
+  const forecourtBack = workshopAisle - .72;
+  const forecourtFront = parkingZones[2].z + parkingDepth / 2 + .36;
+  const rearBack = parkingZones[0].z - parkingDepth / 2 - .36;
+  const rearFront = parkingZones[1].z + parkingDepth / 2 + .36;
+  const parkingLeft = parkingLocations[0].x - 1.85;
 
-  for (const zone of parkingZones) {
-    const arrival = zone.kind === 'arrival';
-    box(ground, -7.7, -.35, zone.z - 2.7, 16.9, .27, 5.4, arrival ? '#526a75' : '#515d58');
-    flat(ground, -7.68, -.068, zone.z - 2.68, 16.86, 5.36, arrival ? '#77909d' : '#747f77');
-  }
-  for (const place of [...parkingLocations, ...arrivalLocations]) {
-    flat(ground, place.x - parkingWidth / 2, -.04, place.z - parkingDepth / 2,
-      parkingWidth, parkingDepth, place.kind === 'arrival' ? '#8ca5b0' : '#849086');
-  }
+  box(ground, left, -.86, back, right - left, .68, front - back, '#728079');
+  flat(ground, left, -.16, back, right - left, front - back, '#afb8ac');
 
-  flat(ground, -17.95, -.16, -24.3, 7.35, 17.5, '#a0b49b');
-  flat(ground, -17.9, -.16, 6.02, 7.4, 2.9, '#d6c9a9');
-  flat(ground, -10.47, -.155, 6.02, 2.4, 6.4, '#d6c9a9');
-  for (const z of [-22.9, -18.4, -13.8, -9.1]) {
-    cylinder(fixtures, -15.4, -.15, z, .14, 1.45, '#796b53', 'y');
-    cylinder(fixtures, -15.4, .98, z, .79, 1.43, '#6d8b70', 'y');
-    cylinder(fixtures, -15.47, 1.84, z, .59, .65, '#7b9978', 'y');
+  // Both aprons are cut into the same asphalt surface as the main drive.
+  polygon(ground, [
+    [roadLeft, 0, back + .18], [roadRight, 0, back + .18],
+    [roadRight, 0, front - .18], [roadLeft, 0, front - .18],
+    [roadLeft, 0, forecourtFront], [-8.24, 0, forecourtFront],
+    [-8.24, 0, forecourtBack], [roadLeft, 0, forecourtBack],
+    [roadLeft, 0, rearFront], [parkingLeft, 0, rearFront],
+    [parkingLeft, 0, rearBack], [roadLeft, 0, rearBack],
+  ], asphalt);
+  flat(ground, roadRight - .23, .005, back + .19, .075, front - back - .38, '#dce1dd');
+
+  for (const [start, end] of [[back + 1.2, rearBack - .25], [rearFront + .65, forecourtBack - .5], [forecourtFront + .28, front - .3]]) {
+    if (end > start) flat(ground, roadLeft + .16, .005, start, .074, end - start, '#dce1dd');
+  }
+  for (const z of [rearBack, rearFront]) {
+    flat(ground, parkingLeft, .006, z, roadLeft - parkingLeft - .15, .09, '#dce1dd');
+  }
+  flat(ground, -8.21, .006, forecourtFront - .09, roadLeft + 8.05, .09, '#dce1dd');
+  flat(ground, parkingLeft + .15, .005, parkingAisle - .07, 1.5, .14, '#c3ccc6');
+
+  // A single rectangular pedestrian court meets the reception threshold and the vehicle apron.
+  const courtLeft = desks.reception.left;
+  const courtBack = desks.reception.front;
+  const courtRight = -8.24;
+  const courtFront = forecourtFront;
+  box(ground, courtLeft, -.17, courtBack, courtRight - courtLeft, .20, courtFront - courtBack, '#9b9e92');
+  flat(ground, courtLeft, .036, courtBack, courtRight - courtLeft, courtFront - courtBack, '#d7d6c9');
+  for (let x = courtLeft + 1.18; x < courtRight - .55; x += 1.18) {
+    flat(ground, x, .04, courtBack, .046, courtFront - courtBack, '#bfc0b4');
+  }
+  for (let z = courtBack + 1.18; z < courtFront - .55; z += 1.18) {
+    flat(ground, courtLeft, .041, z, courtRight - courtLeft, .046, '#bfc0b4');
+  }
+  flat(ground, courtRight - .12, .043, courtBack, .12, courtFront - courtBack, '#eeeae0');
+  box(ground, courtLeft + 1.8, .035, courtBack - .16, 3.45, .06, .36, '#a0ada8');
+
+  box(ground, -17.68, -.15, -23.62, 5.1, .17, 16.3, '#929e8a');
+  flat(ground, -17.48, .025, -23.42, 4.7, 15.9, '#a4b49a');
+  for (const z of [-21.8, -17.6, -13.4, -9.2]) {
+    cylinder(fixtures, -15.2, .025, z, .13, 1.31, '#756b56', 'y');
+    cylinder(fixtures, -15.2, 1.04, z, .76, 1.15, '#698a72', 'y');
+    cylinder(fixtures, -15.26, 1.91, z, .53, .57, '#7c9a7d', 'y');
   }
 }
 
@@ -232,10 +249,10 @@ function makeOffices() {
   for (const [name, room] of Object.entries(desks)) {
     const { left, right, back, front } = room;
     const stock = name === 'warehouse';
-    box(ground, left, -.65, back, right - left, .58, front - back, '#5c665f');
-    flat(ground, left + .04, -.04, back + .04, right - left - .08, front - back - .08, stock ? '#a6b3a5' : '#c4b99c');
-    box(fixtures, left, 0, back, right - left, 2.63, .22, '#d6dcc9');
-    box(fixtures, left, 0, back + .22, .23, 2.63, 3.72, '#c4cebb');
+    box(ground, left, -.25, back, right - left, .25, front - back, '#899593');
+    flat(ground, left, .003, back, right - left, front - back, stock ? '#b8c6bd' : '#ddd9ca');
+    box(fixtures, left, 0, back, right - left, 2.63, .22, wall);
+    box(fixtures, left, 0, back + .22, .23, 2.63, 3.72, wall);
     box(fixtures, left, 1.06, back + .23, right - left, .12, .04, stock ? '#769786' : '#a88353');
     if (stock) {
       const w = 2.46;

@@ -1,7 +1,7 @@
 import type { Bay, ParkingSpace } from '../../api/types'
 import { carModels, fixtures, flat, ground, lifts, type Face, type Point } from './geometry'
 import {
-  bayLocations, desks, locationKey, parkingDepth, parkingWidth, parkingZones, sceneLocations, siteBounds,
+  bayLocations, desks, locationKey, parkingDepth, parkingWidth, parkingZones, sceneLocations, siteBounds, spacesPerRow,
   type DeskLocation, type MapLocation, type SceneLocation,
 } from './mapLayout'
 import { createMotion, motionPose, restPose, type VehicleMotion, type VehiclePose } from './vehicleMotion'
@@ -14,8 +14,9 @@ export interface MarkerPosition {
 
 const cs = Math.cos(.34), sn = Math.sin(.34)
 const ce = Math.cos(.71), se = Math.sin(.71)
-const selectedPaint = '#f2ce77'
-const spacePaint = '#dce2d3'
+const selectedPaint = '#f2cf81'
+const targetPaint = '#b5e8ca'
+const parkingPaint = '#e2e8e5'
 
 function project([x, y, z]: Point, cam: Camera): Point {
   const depth = x * sn + z * cs
@@ -89,6 +90,7 @@ export function mountGarage(
 
   function drawMarkings(cam: Camera) {
     const markings: Face[] = []
+    const highlights: Face[] = []
     for (const place of sceneLocations) {
       const key = locationKey(place)
       const active = key === selectedKey
@@ -98,14 +100,20 @@ export function mountGarage(
       const z = bay ? -3.53 : place.z - parkingDepth / 2
       const w = bay ? 5.1 : parkingWidth
       const d = bay ? 7.72 : parkingDepth
-      const paint = active ? selectedPaint : target ? '#a8e0bd' : spacePaint
-      if (active || target) flat(markings, x, .015, z, w, d, active ? '#a6a087' : '#778f7f')
-      flat(markings, x, .02, z, .075, d, paint)
-      flat(markings, x + w - .075, .02, z, .075, d, paint)
-      flat(markings, x, .02, z, w, .075, paint)
-      flat(markings, x, .02, z + d - .075, w, .075, paint)
+      const paint = active ? selectedPaint : target ? targetPaint : bay ? '#869895' : parkingPaint
+      const line = active || target ? .115 : .075
+      const back = place.kind === 'parking' && place.id <= spacesPerRow ? z : z + d - line
+      const faces = active || target ? highlights : markings
+      if (active || target) flat(markings, x, .015, z, w, d,
+        active ? (bay ? '#b5aa8f' : '#8d8061') : (bay ? '#a9beb0' : '#5d7b72'))
+      flat(faces, x, .02, z, line, d, paint)
+      if (bay || active || target || place.id % spacesPerRow === 0) {
+        flat(faces, x + w - line, .02, z, line, d, paint)
+      }
+      flat(faces, x, .02, bay ? z : back, w, line, paint)
     }
     markings.forEach(face => drawFace(face, cam))
+    highlights.forEach(face => drawFace(face, cam))
   }
 
   function drawRoute(cam: Camera, motion: VehicleMotion) {
@@ -116,9 +124,10 @@ export function mountGarage(
       if (index === 0) ctx.moveTo(px, py)
       else ctx.lineTo(px, py)
     })
-    ctx.strokeStyle = '#e9bd61'
-    ctx.lineWidth = Math.max(2, cam.scale * .14)
-    ctx.setLineDash([6, 5])
+    ctx.strokeStyle = 'rgba(245, 194, 102, .72)'
+    ctx.lineWidth = Math.max(1.5, cam.scale * .13)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
     ctx.stroke()
     ctx.restore()
   }
@@ -174,7 +183,7 @@ export function mountGarage(
         return { place, x, y, hidden: x < 12 || y < 22 || x > viewport.width - 12 || y > viewport.height - 4 }
       }
       onMarkers([...sceneLocations.map(place => {
-        const nearWorkshop = place.kind === 'parking' && place.id > 5
+        const nearWorkshop = place.kind === 'parking' && place.id > spacesPerRow
         const z = place.kind === 'bay' ? 4.4 : place.z + (nearWorkshop ? -.6 : 2.12)
         return marker(place, [place.x, .02, z])
       }), marker('warehouse', [-14.2, .3, -.7]), marker('reception', [-14.2, .3, 5.35]),

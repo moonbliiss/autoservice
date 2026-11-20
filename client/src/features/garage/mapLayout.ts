@@ -10,7 +10,8 @@ export const garagePosts = [
 export const workshopAisle = 6.12
 export const parkingAisle = -15.6
 export const parkingEntrance = 11.8
-export const parkingWidth = 3.1
+export const spacesPerRow = 5
+export const parkingWidth = 3.25
 export const parkingDepth = 4.9
 export const desks = {
   warehouse: { left: -17.9, right: -10.45, back: -5.9, front: -.35 },
@@ -26,14 +27,14 @@ export const parkingZones = [
 ] as const
 
 export const bayLocations: SceneLocation[] = garagePosts.map(({ id, x }) => ({ kind: 'bay', id, x, z: 0, yaw: 0 }))
-export const parkingLocations: SceneLocation[] = Array.from({ length: 10 }, (_, index) => ({
+export const parkingLocations: SceneLocation[] = Array.from({ length: spacesPerRow * 2 }, (_, index) => ({
   kind: 'parking', id: index + 1,
-  x: -5.75 + index % 5 * 3.25,
-  z: parkingZones[Math.floor(index / 5)].z,
-  yaw: index < 5 ? 0 : Math.PI,
+  x: -5.75 + index % spacesPerRow * parkingWidth,
+  z: parkingZones[Math.floor(index / spacesPerRow)].z,
+  yaw: index < spacesPerRow ? 0 : Math.PI,
 }))
-export const arrivalLocations: SceneLocation[] = Array.from({ length: 5 }, (_, index) => ({
-  kind: 'arrival', id: index + 1, x: -5.75 + index * 3.25, z: parkingZones[2].z, yaw: Math.PI,
+export const arrivalLocations: SceneLocation[] = Array.from({ length: spacesPerRow }, (_, index) => ({
+  kind: 'arrival', id: index + 1, x: -5.75 + index * parkingWidth, z: parkingZones[2].z, yaw: Math.PI,
 }))
 export const sceneLocations = [...bayLocations, ...parkingLocations, ...arrivalLocations]
 export const locationKey = ({ kind, id }: MapLocation) => `${kind}:${id}`
