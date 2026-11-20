@@ -8,22 +8,32 @@ export const garagePosts = [
 ]
 
 export const workshopAisle = 6.12
-export const parkingAisle = 3.6
-export const parkingEntrance = 11.05
+export const parkingAisle = -15.6
+export const parkingEntrance = 11.8
 export const parkingWidth = 3.1
 export const parkingDepth = 4.9
-export const warehouse = { left: 10.6, right: 22.1, back: -12.1, front: -5.85 }
-export const siteBounds = { left: -11, right: 29, back: -12.65, front: 17 }
+export const desks = {
+  warehouse: { left: -17.9, right: -10.45, back: -5.9, front: -.35 },
+  reception: { left: -17.9, right: -10.45, back: -.2, front: 5.65 },
+}
+export type DeskLocation = keyof typeof desks
+export const siteBounds = { left: -19, right: 14, back: -25.3, front: 16.35 }
+
+export const parkingZones = [
+  { key: 'service-one', label: 'Парковка сервиса 1', z: -20.55, kind: 'parking' },
+  { key: 'service-two', label: 'Парковка сервиса 2', z: -10.65, kind: 'parking' },
+  { key: 'customer-parking', label: 'Клиентская парковка', z: 11.85, kind: 'arrival' },
+] as const
 
 export const bayLocations: SceneLocation[] = garagePosts.map(({ id, x }) => ({ kind: 'bay', id, x, z: 0, yaw: 0 }))
 export const parkingLocations: SceneLocation[] = Array.from({ length: 10 }, (_, index) => ({
   kind: 'parking', id: index + 1,
-  x: 13.2 + index % 5 * 3.25,
-  z: index < 5 ? -1.9 : 9.1,
-  yaw: index < 5 ? Math.PI : 0,
+  x: -5.75 + index % 5 * 3.25,
+  z: parkingZones[Math.floor(index / 5)].z,
+  yaw: index < 5 ? 0 : Math.PI,
 }))
 export const arrivalLocations: SceneLocation[] = Array.from({ length: 5 }, (_, index) => ({
-  kind: 'arrival', id: index + 1, x: -8.1 + index * 3.25, z: 13.5, yaw: 0,
+  kind: 'arrival', id: index + 1, x: -5.75 + index * 3.25, z: parkingZones[2].z, yaw: Math.PI,
 }))
 export const sceneLocations = [...bayLocations, ...parkingLocations, ...arrivalLocations]
 export const locationKey = ({ kind, id }: MapLocation) => `${kind}:${id}`

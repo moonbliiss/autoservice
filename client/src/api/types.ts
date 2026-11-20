@@ -1,4 +1,11 @@
 export type Role = 'advisor' | 'mechanic' | 'client' | 'stockkeeper' | 'manager'
+export type PresenceStatus = 'present' | 'away'
+export interface StaffPresence {
+  id: number
+  name: string
+  role: 'advisor' | 'stockkeeper'
+  status: PresenceStatus | null
+}
 export type Profile = Role | 'mechanic2' | 'client2'
 export type Status =
   | 'new' | 'scheduled' | 'cancelled' | 'received'
@@ -172,6 +179,7 @@ export interface Dashboard {
   supplies?: PartSupply[]
   warehouse_needs?: WarehouseNeed[]
   staff?: (NamedItem & { role: Role })[]
+  staff_presence?: StaffPresence[]
   movements?: { id: number; quantity: number; note: string | null; created_at: string; name: string; employee: string;
     supply_id: number | null; request_id: number | null }[]
 }

@@ -1,4 +1,4 @@
-import { arrivalLocations, garagePosts, parkingDepth, parkingLocations, parkingWidth, warehouse } from './mapLayout';
+import { arrivalLocations, desks, garagePosts, parkingAisle, parkingDepth, parkingEntrance, parkingLocations, parkingWidth, parkingZones, siteBounds } from './mapLayout';
 
 export type Point = [number, number, number];
 export interface Face { points: Point[]; color: string; stroke: string | null; center: Point }
@@ -181,75 +181,88 @@ function makeCar(mesh: Face[], x: number, y: number, z: number, color: string) {
   }
 }
 
-function makeParking() {
-  box(ground, 10.4, -.65, -5.85, 18.3, .58, 18.1, '#555b56');
-  flat(ground, 10.41, -.059, -5.84, 18.28, 18.08, '#747c75');
-  flat(ground, 11.6, -.052, .7, 16.8, 5.15, '#646e67');
-  flat(ground, 11.63, -.049, -5.55, 16.68, .34, '#a9aa97');
-  flat(ground, 11.63, -.049, 11.9, 16.68, .2, '#a9aa97');
-  for (let x = 12.55; x < 28; x += 1.45) flat(ground, x, -.045, 3.54, .79, .075, '#c0c4b1');
-  for (const place of parkingLocations) {
+function makeSite() {
+  const { left, right, back, front } = siteBounds;
+  box(ground, left, -.93, back, right - left, .70, front - back, '#5e6b64');
+  flat(ground, left + .03, -.216, back + .03, right - left - .06, front - back - .06, '#b9c0b5');
+  flat(ground, parkingEntrance - 1.8, -.18, back + .4, 3.6, front - back - .8, '#77827d');
+  flat(ground, -8, -.17, parkingAisle - 2.5, parkingEntrance + 8.8, 5, '#77827d');
+  flat(ground, -10.35, -.17, 5.6, parkingEntrance + 11.95, 3.65, '#77827d');
+  for (let z = back + 1; z < front - 1; z += 2.4) {
+    flat(ground, parkingEntrance - .027, -.164, z, .054, 1.04, '#c8c8af');
+  }
+  for (let x = -7.4; x < parkingEntrance - 2; x += 1.8) {
+    flat(ground, x, -.163, parkingAisle, .84, .06, '#c8c8af');
+  }
+
+  for (const zone of parkingZones) {
+    const arrival = zone.kind === 'arrival';
+    box(ground, -7.7, -.35, zone.z - 2.7, 16.9, .27, 5.4, arrival ? '#526a75' : '#515d58');
+    flat(ground, -7.68, -.068, zone.z - 2.68, 16.86, 5.36, arrival ? '#77909d' : '#747f77');
+  }
+  for (const place of [...parkingLocations, ...arrivalLocations]) {
     flat(ground, place.x - parkingWidth / 2, -.04, place.z - parkingDepth / 2,
-      parkingWidth, parkingDepth, '#828981');
+      parkingWidth, parkingDepth, place.kind === 'arrival' ? '#8ca5b0' : '#849086');
   }
-  box(ground, -10.4, -.65, 7.1, 18.1, .58, 9.5, '#556368');
-  flat(ground, -10.38, -.059, 7.12, 18.06, 9.46, '#798b90');
-  flat(ground, -10.15, -.048, 16.16, 17.58, .23, '#b4c5c2');
-  for (const place of arrivalLocations) {
-    flat(ground, place.x - parkingWidth / 2, -.04, place.z - parkingDepth / 2, parkingWidth, parkingDepth, '#899fa5');
+
+  flat(ground, -17.95, -.16, -24.3, 7.35, 17.5, '#a0b49b');
+  flat(ground, -17.9, -.16, 6.02, 7.4, 2.9, '#d6c9a9');
+  flat(ground, -10.47, -.155, 6.02, 2.4, 6.4, '#d6c9a9');
+  for (const z of [-22.9, -18.4, -13.8, -9.1]) {
+    cylinder(fixtures, -15.4, -.15, z, .14, 1.45, '#796b53', 'y');
+    cylinder(fixtures, -15.4, .98, z, .79, 1.43, '#6d8b70', 'y');
+    cylinder(fixtures, -15.47, 1.84, z, .59, .65, '#7b9978', 'y');
   }
 }
 
-function makeWarehouse() {
-  const { left, right, back, front } = warehouse;
-  box(ground, left, -.63, back, right - left, .58, front - back, '#5c665f');
-  flat(ground, left + .04, -.04, back + .04, right - left - .08, front - back - .08, '#a6b3a5');
-  flat(ground, 11.3, -.03, front - .7, 10, .44, '#c0caac');
-  box(fixtures, left, 0, back, right - left, 2.8, .25, '#d6dcc9');
-  box(fixtures, left, 0, back + .25, .22, 2.8, 3.3, '#c4cebb');
-  box(fixtures, left, 1.1, back + .25, right - left, .12, .045, '#769786');
-
-  for (const x of [11.28, 14.68]) {
-    const z = -11.32;
-    const width = 2.87;
-    for (const dx of [0, width - .10]) {
-      for (const dz of [0, .95]) box(fixtures, x + dx, 0, z + dz, .10, 2.16, .10, '#507364');
-    }
-    for (const height of [.25, .91, 1.57]) {
-      box(fixtures, x, height, z, width, .09, 1.06, '#607a6c');
-      box(fixtures, x + .21, height + .09, z + .15, .73, .48, .7, '#b78b55');
-      box(fixtures, x + 1.10, height + .09, z + .16, .58, .42, .66, '#95a685');
-      box(fixtures, x + 1.94, height + .09, z + .19, .61, .43, .63, '#c7a976');
-    }
-  }
-
-  // Stockkeeper's desk, screen and chair face the open side of the warehouse.
-  box(fixtures, 18.15, .88, -8.48, 2.72, .12, 1.31, '#c7a579');
-  box(fixtures, 18.24, 0, -8.36, .15, .88, 1.05, '#64746a');
-  box(fixtures, 20.54, 0, -8.36, .19, .88, 1.05, '#64746a');
-  box(fixtures, 19.66, 1, -7.68, .62, .055, .41, '#404f46');
-  box(fixtures, 19.89, 1.055, -7.55, .13, .29, .11, '#404f46');
-  box(fixtures, 19.54, 1.31, -7.57, .83, .53, .10, '#3b4e45');
-  box(fixtures, 19.59, 1.36, -7.46, .73, .42, .018, '#8eb9ab');
-  box(fixtures, 19.62, 1.0, -8.01, .65, .043, .18, '#405448');
-  box(fixtures, 18.53, 1.0, -7.8, .43, .057, .53, '#e9dfc3');
-
-  box(fixtures, 18.72, .38, -9.43, .79, .12, .72, '#40534a');
-  box(fixtures, 18.72, .5, -9.47, .79, .8, .13, '#465c50');
-  box(fixtures, 19.05, .07, -9.13, .14, .32, .14, '#494e4a');
-  box(fixtures, 18.89, .49, -9.13, .48, .76, .55, '#476e5b');
-  box(fixtures, 18.83, .96, -8.95, .16, .17, .57, '#486d5a');
-  box(fixtures, 19.31, .96, -8.95, .16, .17, .66, '#486d5a');
-  box(fixtures, 18.85, .98, -8.38, .13, .11, .17, '#be916e');
-  box(fixtures, 19.32, .98, -8.29, .13, .11, .17, '#be916e');
-  cylinder(fixtures, 19.14, 1.18, -8.88, .11, .18, '#ca9d79', 'y');
-  cylinder(fixtures, 19.14, 1.32, -8.88, .23, .39, '#ca9d79', 'y');
-  cylinder(fixtures, 19.14, 1.62, -8.9, .245, .12, '#43453a', 'y');
+function desk(x: number, z: number, accent: string) {
+  box(fixtures, x, 0, z, 2.66, .87, .94, accent);
+  box(fixtures, x - .08, .87, z - .07, 2.82, .13, 1.12, '#c7a579');
+  box(fixtures, x + 1.37, 1, z + .36, .58, .07, .34, '#404f46');
+  box(fixtures, x + 1.58, 1.07, z + .48, .14, .28, .12, '#404f46');
+  box(fixtures, x + 1.22, 1.29, z + .48, .84, .53, .12, '#3b4e45');
+  box(fixtures, x + 1.27, 1.34, z + .6, .74, .43, .02, '#8eb9ab');
+  box(fixtures, x + .30, 1, z + .4, .46, .06, .39, '#e9dfc3');
+  box(fixtures, x + .84, .40, z - .93, .76, .12, .71, '#4b6258');
+  box(fixtures, x + .84, .48, z - .95, .76, .65, .13, '#4b6258');
+  cylinder(fixtures, x + 1.22, .01, z - .58, .13, .42, '#49554e', 'y');
 }
 
+function makeOffices() {
+  for (const [name, room] of Object.entries(desks)) {
+    const { left, right, back, front } = room;
+    const stock = name === 'warehouse';
+    box(ground, left, -.65, back, right - left, .58, front - back, '#5c665f');
+    flat(ground, left + .04, -.04, back + .04, right - left - .08, front - back - .08, stock ? '#a6b3a5' : '#c4b99c');
+    box(fixtures, left, 0, back, right - left, 2.63, .22, '#d6dcc9');
+    box(fixtures, left, 0, back + .22, .23, 2.63, 3.72, '#c4cebb');
+    box(fixtures, left, 1.06, back + .23, right - left, .12, .04, stock ? '#769786' : '#a88353');
+    if (stock) {
+      const w = 2.46;
+      for (const x of [left + .43, left + 3.08]) {
+        for (const dx of [0, w - .10]) {
+          for (const dz of [0, .74]) box(fixtures, x + dx, 0, back + .47 + dz, .10, 2.15, .10, '#507364');
+        }
+        for (const h of [.25, .91, 1.57]) {
+          box(fixtures, x, h, back + .47, w, .09, .83, '#607a6c');
+          box(fixtures, x + .21, h + .09, back + .59, .73, .46, .57, '#b78b55');
+          box(fixtures, x + 1.1, h + .09, back + .59, .66, .39, .59, '#95a685');
+        }
+      }
+    } else {
+      for (const x of [left + .56, left + 1.56]) {
+        box(fixtures, x, .41, back + .6, .82, .18, .78, '#8e6049');
+        box(fixtures, x, .56, back + .6, .82, .6, .14, '#a16f54');
+        box(fixtures, x + .12, 0, back + .72, .58, .41, .54, '#695747');
+      }
+    }
+    desk(right - 3.15, front - 1.78, stock ? '#64796a' : '#9a744c');
+  }
+}
+
+makeSite();
 makeBuilding();
-makeParking();
-makeWarehouse();
+makeOffices();
 
 export const lifts = garagePosts.map(post => {
   const arms: Face[] = [];

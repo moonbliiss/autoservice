@@ -4,6 +4,8 @@ export const roleLabels: Record<Role, string> = {
   advisor: 'Мастер-приёмщик', mechanic: 'Механик', client: 'Клиент', stockkeeper: 'Запчастист', manager: 'Управляющий',
 }
 
+export const presenceLabels = { present: 'На месте', away: 'Отошёл' } as const
+
 export const statusLabels = {
   new: 'Новая', scheduled: 'Визит назначен', cancelled: 'Отменена', received: 'Автомобиль принят',
   diagnosis_assigned: 'Назначена диагностика', diagnosing: 'Диагностика', awaiting_estimate: 'Подготовка заказ-наряда',

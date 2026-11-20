@@ -30,3 +30,4 @@
   .map-popover { top: auto; bottom: 10px; max-height: min(225px, calc(100% - 60px)); }
   .workshop-map-main .map-popover { bottom: 10px; max-height: min(245px, calc(100% - 137px)); }
 }
+.map-presence { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); }

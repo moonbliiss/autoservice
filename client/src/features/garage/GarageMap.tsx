@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { Bay, ParkingSpace } from '../../api/types'
-import { garagePosts, locationKey, type MapLocation } from './mapLayout'
+import type { Bay, ParkingSpace, StaffPresence } from '../../api/types'
+import { presenceLabels } from '../../shared/labels'
+import { garagePosts, locationKey, parkingZones, type DeskLocation, type MapLocation } from './mapLayout'
 import { mountGarage, type MarkerPosition } from './renderer'
 import './garage.css'
 
 const noTargets: string[] = []
 const noArrivals: ParkingSpace[] = []
 
-export function GarageMap({ bays, parking, arrivals = noArrivals, selected, targets = noTargets, onSelect, onOpenStock, onClear, children }: {
+export function GarageMap({ bays, parking, arrivals = noArrivals, selected, targets = noTargets, onSelect, onDesk, staff, onClear, children }: {
   bays: readonly Bay[]; parking: readonly ParkingSpace[]; arrivals?: readonly ParkingSpace[]; selected: MapLocation | null
-  targets?: string[]; onSelect: (place: MapLocation) => void; onOpenStock?: () => void
+  targets?: string[]; onSelect: (place: MapLocation) => void; onDesk?: (desk: DeskLocation) => void
+  staff?: StaffPresence[]
   onClear?: () => void; children?: ReactNode
 }) {
   const stage = useRef<HTMLElement>(null)
@@ -35,7 +37,7 @@ export function GarageMap({ bays, parking, arrivals = noArrivals, selected, targ
 
   return <section className="scene" ref={stage} aria-label="Интерактивная 3D-карта"
     onKeyDown={event => { if (event.key === 'Escape') onClear?.() }}>
-    <canvas id="garage" ref={canvas} aria-label="3D-модель цеха, парковки и склада"
+    <canvas id="garage" ref={canvas} aria-label="3D-модель цеха, парковок, приёмки и склада"
       onPointerDown={event => { pointerStart.current = { x: event.clientX, y: event.clientY } }}
       onPointerCancel={() => { pointerStart.current = null }}
       onClick={event => {
@@ -44,15 +46,25 @@ export function GarageMap({ bays, parking, arrivals = noArrivals, selected, targ
         if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return
         const bounds = event.currentTarget.getBoundingClientRect()
         const place = renderer.current?.pick(event.clientX - bounds.left, event.clientY - bounds.top)
-        if (place === 'warehouse') onOpenStock?.()
+        if (typeof place === 'string') onDesk?.(place)
         else if (place) onSelect(place)
         else onClear?.()
       }} />
-    <div className="markers" aria-label="Подъёмники, парковочные места и склад">
+    <div className="markers" aria-label="Подъёмники, парковочные места, приёмка и склад">
       {positions.map(({ place, x, y, hidden }) => {
-        if (place === 'warehouse') return onOpenStock && <button key={place} className="marker warehouse-marker"
-          type="button" hidden={hidden} style={{ left: x, top: y }} aria-label="Запчастист · открыть склад"
-          data-location={place} onClick={onOpenStock}>Склад</button>
+        if (place === 'warehouse' || place === 'reception') {
+          const name = place === 'warehouse' ? 'Склад' : 'Приёмка'
+          const person = staff?.find(row => row.role === (place === 'warehouse' ? 'stockkeeper' : 'advisor'))
+          const status = person?.status ? presenceLabels[person.status] : 'Не отмечено'
+          if (!onDesk) return <span key={place} className="map-zone" hidden={hidden} style={{ left: x, top: y }}>{name}</span>
+          return <button key={place} className={`marker desk-marker ${place}-marker`} type="button" hidden={hidden}
+            style={{ left: x, top: y }} aria-label={`${name} · ${status}`}
+            data-location={place} onClick={() => onDesk(place)}>
+            <span className="presence-dot" data-status={person?.status ?? ''} aria-hidden="true" />{name}
+          </button>
+        }
+        if (typeof place === 'string') return <span key={place} className="map-zone" hidden={hidden}
+          style={{ left: x, top: y }}>{parkingZones.find(zone => zone.key === place)?.label}</span>
         const key = locationKey(place)
         const bay = place.kind === 'bay'
         const arrival = place.kind === 'arrival'

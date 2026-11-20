@@ -15,13 +15,14 @@ export function App() {
   const {
     dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction, formError, notice, busy, submitting,
-    changeProfile, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
+    changeProfile, changePresence, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
   } = useWorkshop()
   const onNewRequest = (vehicleId?: number) => showAction({ key: 'newRequest', vehicleId })
 
   return <>
     <AppShell user={dashboard?.user} section={section} busy={busy} submitting={submitting} notice={notice}
-      navigate={navigate} changeProfile={changeProfile}
+      navigate={navigate} changeProfile={changeProfile} changePresence={changePresence}
+      ownPresence={dashboard?.staff_presence?.find(person => person.id === dashboard.user.id)}
       mapOverview={dashboard?.user.role === 'advisor' && section === 'overview' && !detail}>
       {!dashboard ? <p>{busy ? 'Загрузка мастерской…'
         : 'Не удалось подключиться к мастерской. Проверьте запуск сервера и обновите страницу.'}</p>

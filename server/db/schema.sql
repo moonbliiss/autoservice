@@ -7,6 +7,11 @@ CREATE TABLE IF NOT EXISTS accounts (
   phone TEXT
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS staff_presence (
+  account_id INTEGER PRIMARY KEY REFERENCES accounts(id),
+  status TEXT NOT NULL CHECK (status IN ('present','away'))
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS vehicles (
   id INTEGER PRIMARY KEY,
   client_id INTEGER NOT NULL REFERENCES accounts(id),

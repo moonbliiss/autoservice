@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, createRequest, errorMessage, getDashboard, getRequest, issueStock, orderSupply, receiveSupply, restock, selectProfile, updateRequest } from '../api/client'
-import type { Dashboard, Profile, RequestDetail, RequestSummary, Submission } from '../api/types'
+import { ApiError, createRequest, errorMessage, getDashboard, getRequest, issueStock, orderSupply, receiveSupply, restock, savePresence, selectProfile, updateRequest } from '../api/client'
+import type { Dashboard, PresenceStatus, Profile, RequestDetail, RequestSummary, Submission } from '../api/types'
 import type { FormAction } from '../features/actions/ActionFields'
 import type { MoveRequest } from '../features/garage/WorkshopFloor'
 import { profileKey, type Section } from './navigation'
@@ -90,6 +90,23 @@ export function useWorkshop() {
   }
 
   const userId = dashboard?.user.id
+  async function changePresence(status: PresenceStatus) {
+    if (locked.current || !userId) return
+    ++revision.current
+    locked.current = true
+    setSubmitting(true)
+    try {
+      const saved = await savePresence(status)
+      setDashboard(current => current && { ...current, staff_presence: current.staff_presence?.map(person =>
+        person.id === userId ? { ...person, status: saved.status } : person) })
+    } catch (error) {
+      notify(errorMessage(error), true)
+    } finally {
+      locked.current = false
+      setSubmitting(false)
+    }
+  }
+
   const liveWorkshop = section === 'overview' && ['advisor', 'manager', 'mechanic'].includes(dashboard?.user.role ?? '')
   const demoProfile = profileKey(dashboard?.user)
   const detailId = detail?.id
@@ -278,6 +295,6 @@ export function useWorkshop() {
   return {
     dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction: () => setAction(null), formError, notice, busy, submitting,
-    changeProfile, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
+    changeProfile, changePresence, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
   }
 }

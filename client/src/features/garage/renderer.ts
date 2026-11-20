@@ -1,14 +1,16 @@
 import type { Bay, ParkingSpace } from '../../api/types'
 import { carModels, fixtures, flat, ground, lifts, type Face, type Point } from './geometry'
 import {
-  bayLocations, locationKey, parkingDepth, parkingWidth, sceneLocations, siteBounds, warehouse,
-  type MapLocation, type SceneLocation,
+  bayLocations, desks, locationKey, parkingDepth, parkingWidth, parkingZones, sceneLocations, siteBounds,
+  type DeskLocation, type MapLocation, type SceneLocation,
 } from './mapLayout'
 import { createMotion, motionPose, restPose, type VehicleMotion, type VehiclePose } from './vehicleMotion'
 
 interface Camera { scale: number; x: number; y: number }
 interface VehicleBounds { place: SceneLocation; left: number; right: number; top: number; bottom: number; depth: number }
-export interface MarkerPosition { place: SceneLocation | 'warehouse'; x: number; y: number; hidden: boolean }
+export interface MarkerPosition {
+  place: SceneLocation | DeskLocation | typeof parkingZones[number]['key']; x: number; y: number; hidden: boolean
+}
 
 const cs = Math.cos(.34), sn = Math.sin(.34)
 const ce = Math.cos(.71), se = Math.sin(.71)
@@ -172,9 +174,11 @@ export function mountGarage(
         return { place, x, y, hidden: x < 12 || y < 22 || x > viewport.width - 12 || y > viewport.height - 4 }
       }
       onMarkers([...sceneLocations.map(place => {
-        const z = place.kind === 'bay' ? 4.4 : place.z + (place.kind === 'parking' && place.id <= 5 ? -2 : 2.3)
+        const nearWorkshop = place.kind === 'parking' && place.id > 5
+        const z = place.kind === 'bay' ? 4.4 : place.z + (nearWorkshop ? -.6 : 2.12)
         return marker(place, [place.x, .02, z])
-      }), marker('warehouse', [15.3, 3.2, -11.5])])
+      }), marker('warehouse', [-14.2, .3, -.7]), marker('reception', [-14.2, .3, 5.35]),
+      ...parkingZones.map(zone => marker(zone.key, [.78, .55, zone.z - 3.05]))])
     }
     if (motions.size) scheduleDraw()
   }
@@ -218,14 +222,18 @@ export function mountGarage(
       const x = across * cs + depth * sn
       const z = depth * cs - across * sn
       const raised = 1.5 * ce / se
-      if ([0, raised].some(height => {
-        const warehouseX = x + height * sn
-        const warehouseZ = z + height * cs
-        return warehouseX >= warehouse.left && warehouseX <= warehouse.right && warehouseZ >= warehouse.back && warehouseZ <= warehouse.front
-      })) return 'warehouse' as const
-      return sceneLocations.find(place => place.kind === 'bay'
+      const place = sceneLocations.find(place => place.kind === 'bay'
         ? Math.abs(x - place.x) <= 2.55 && z >= -3.53 && z <= 4.19
         : Math.abs(x - place.x) <= parkingWidth / 2 && Math.abs(z - place.z) <= parkingDepth / 2)
+      if (place) return place
+      return (Object.keys(desks) as DeskLocation[]).find(key => {
+        const area = desks[key]
+        return [0, raised].some(height => {
+          const roomX = x + height * sn
+          const roomZ = z + height * cs
+          return roomX >= area.left && roomX <= area.right && roomZ >= area.back && roomZ <= area.front
+        })
+      })
     },
     update(bays: readonly Bay[], parking: readonly ParkingSpace[], arrivals: readonly ParkingSpace[],
       selected: MapLocation | null, targets: string[]) {

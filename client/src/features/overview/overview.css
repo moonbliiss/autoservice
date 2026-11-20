@@ -1,1 +1,4 @@
 .section-gap { height: 13px; }
+.shift-presence { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 13px; padding: 0; list-style: none; }
+.shift-presence li { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: .88rem; }
+.shift-presence li > span:last-child { color: var(--muted); }

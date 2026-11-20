@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react'
-import type { Dashboard, Profile } from '../api/types'
-import { roleLabels } from '../shared/labels'
+import type { Dashboard, PresenceStatus, Profile, StaffPresence } from '../api/types'
+import { presenceLabels, roleLabels } from '../shared/labels'
 import { navigation, profileKey, profiles, type Section } from './navigation'
 import './shell.css'
 
-export function AppShell({ user, section, busy, submitting, notice, navigate, changeProfile, children, mapOverview }: {
+export function AppShell({ user, section, busy, submitting, notice, navigate, changeProfile, changePresence, ownPresence, children, mapOverview }: {
   user?: Dashboard['user']; section: Section; busy: boolean; submitting: boolean;
   mapOverview: boolean;
   notice: { message: string; error: boolean } | null; navigate: (section: Section) => void;
   changeProfile: (profile: Profile) => Promise<void>; children: ReactNode
+  ownPresence?: StaffPresence; changePresence: (status: PresenceStatus) => Promise<void>
 }) {
   const name = user?.name ?? 'Анна Морозова'
   const avatar = name.split(' ').map(part => part[0]).join('').slice(0, 2)
@@ -25,8 +26,20 @@ export function AppShell({ user, section, busy, submitting, notice, navigate, ch
       <div className="sidebar-foot"><span className="signal" /> Локальный деморежим</div>
     </aside>
     <div className="workspace">
-      <header className="top">
+      <header className="top" data-has-presence={Boolean(ownPresence)}>
         <span id="location-label">{user ? roleLabels[user.role] : 'Рабочее пространство'}</span>
+        {ownPresence && <label className="presence-control">
+          <span className="presence-dot" data-status={ownPresence.status ?? ''} aria-hidden="true" />
+          <select aria-label="Мой статус присутствия" value={ownPresence.status ?? ''} disabled={busy || submitting}
+            onChange={event => {
+              const value = event.target.value
+              if (value === 'present' || value === 'away') void changePresence(value)
+            }}>
+            <option value="" disabled>Не отмечено</option>
+            <option value="present">{presenceLabels.present}</option>
+            <option value="away">{presenceLabels.away}</option>
+          </select>
+        </label>}
         <label className="profile"><span id="avatar" className="avatar" aria-hidden="true">{avatar}</span>
           <span className="profile-label"><span id="profile-name">{name}</span>
             <select id="profile" aria-label="Демонстрационный профиль" value={profileKey(user)}

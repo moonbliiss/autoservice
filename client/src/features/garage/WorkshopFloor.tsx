@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import type { Dashboard, ParkingSpace, RoutingAction } from '../../api/types'
 import { code, dateOnly } from '../../shared/format'
+import { presenceLabels } from '../../shared/labels'
 import { Button } from '../../shared/ui'
 import { StatusTag } from '../requests/status'
 import { GarageMap } from './GarageMap'
-import { arrivalLocations, locationKey, sceneLocations, type MapLocation } from './mapLayout'
+import { arrivalLocations, locationKey, sceneLocations, type DeskLocation, type MapLocation } from './mapLayout'
 import './floor.css'
 
 type ArrivalAction = 'arrivalPark' | 'leaveArrival'
@@ -20,8 +21,8 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewReq
   dashboard: Dashboard; onOpen: (id: number) => void; onMove: MoveRequest; onOpenStock?: () => void
   onNewRequest?: () => void; onNewArrival?: (place: number) => void; queues?: ReactNode
 }) {
-  const [selection, setSelection] = useState<{ place: MapLocation; requestId: number | null } | 'warehouse' | 'queue' | null>(null)
-  const { requests, bays = [], parking = [] } = dashboard
+  const [selection, setSelection] = useState<{ place: MapLocation; requestId: number | null } | DeskLocation | 'queue' | null>(null)
+  const { requests, bays = [], parking = [], staff_presence: staff } = dashboard
   const advisor = dashboard.user.role === 'advisor'
   const arrivals: ParkingSpace[] = arrivalLocations.map(({ id }) => {
     const request = requests.find(row => row.arrival_space === id)
@@ -60,13 +61,15 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewReq
   const arrivalOptions = advisor && arriving && !request ? requests.filter(row =>
     row.status === 'new' || row.status === 'scheduled' || row.status === 'received' || row.arrival_space) : []
   const expected = selected?.place.kind === 'parking' ? parking.find(space => space.id === selected.place.id)?.expected_date : null
-  const title = selection === 'queue' ? 'Заявки по статусам' : selection === 'warehouse' ? 'Склад'
+  const selectedDesk = selection === 'warehouse' || selection === 'reception' ? selection : null
+  const person = selectedDesk && staff?.find(row => row.role === (selectedDesk === 'warehouse' ? 'stockkeeper' : 'advisor'))
+  const title = selection === 'queue' ? 'Заявки по статусам' : selectedDesk === 'warehouse' ? 'Склад' : selectedDesk === 'reception' ? 'Приёмка'
     : selectedBay ? `Пост ${selectedBay.id} · ${selectedBay.name}`
       : selected && `${arriving ? 'Клиентская стоянка' : 'Сервисная парковка'} · место ${selected.place.id}`
 
   return <div className={advisor ? 'workshop-map workshop-map-main' : 'workshop-map'}>
     <GarageMap bays={bays} parking={parking} arrivals={arrivals} selected={selected?.place ?? null} targets={targets}
-      onSelect={selectPlace} onClear={() => setSelection(null)} onOpenStock={onOpenStock && (() => setSelection('warehouse'))}>
+      onSelect={selectPlace} onClear={() => setSelection(null)} onDesk={setSelection} staff={staff}>
       {advisor && <header className="map-toolbar">
         <h1>Карта сервиса</h1>
         <div className="map-toolbar-actions">
@@ -76,7 +79,7 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewReq
         </div>
         <div className="map-legend" aria-label="Стоянки на карте">
           <span><i className="arrival-key" />Клиентская стоянка <b>{arrivals.filter(space => space.occupied).length}/{arrivals.length}</b></span>
-          <span><i />Сервисная парковка <b>{parking.filter(space => space.occupied).length}/{parking.length}</b></span>
+          <span><i />Сервисные парковки <b>{parking.filter(space => space.occupied).length}/{parking.length}</b></span>
         </div>
       </header>}
       {title && <section className="map-popover" aria-labelledby="map-popover-title">
@@ -84,9 +87,12 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewReq
           <h2 id="map-popover-title">{title}</h2>
           <button type="button" aria-label="Закрыть карточку карты" onClick={() => setSelection(null)}>×</button>
         </div>
-        {selection === 'queue' ? queues : selection === 'warehouse' ? <>
-          <p className="muted">Остатки, потребность в деталях и поставки.</p>
-          {onOpenStock && <Button variant="primary" onClick={onOpenStock}>Открыть склад</Button>}
+        {selection === 'queue' ? queues : selectedDesk ? <>
+          {person && <strong>{person.name}</strong>}
+          <p className="map-presence"><span className="presence-dot" data-status={person ? person.status ?? '' : ''} />
+            {person && person.status ? presenceLabels[person.status] : 'Не отмечено'}</p>
+          {selectedDesk === 'warehouse' && onOpenStock && <Button variant="primary" onClick={onOpenStock}>Открыть склад</Button>}
+          {selectedDesk === 'reception' && onNewRequest && <Button variant="primary" onClick={onNewRequest}>Новая заявка</Button>}
         </> : selected && <>
           {displayedRequest ? <>
             <div className="map-car">

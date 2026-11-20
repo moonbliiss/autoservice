@@ -1,6 +1,6 @@
 import type { Dashboard, RequestSummary, Status } from '../../api/types'
 import { code } from '../../shared/format'
-import { statusLabels } from '../../shared/labels'
+import { presenceLabels, roleLabels, statusLabels } from '../../shared/labels'
 import { Button, Heading, Metrics, Panel } from '../../shared/ui'
 import { StatusTag, closedStatuses, workshopStatuses } from '../requests/status'
 import { RequestTable, type OpenRequest } from '../requests/RequestTable'
@@ -70,6 +70,13 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onNewArrival
     const active = requests.find(row => row.status !== 'paused' && workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me)
     return <>
       <Heading title="Моя смена" subtitle="Текущий пост, задача и результаты работы." eyebrow="КАБИНЕТ МЕХАНИКА" />
+      {Boolean(dashboard.staff_presence?.length) && <ul className="shift-presence" aria-label="Присутствие сотрудников">
+        {dashboard.staff_presence?.map(person => <li key={person.id}>
+          <span className="presence-dot" data-status={person.status ?? ''} aria-hidden="true" />
+          <strong>{roleLabels[person.role]}</strong>
+          <span>{person.status ? presenceLabels[person.status] : 'Не отмечено'}</span>
+        </li>)}
+      </ul>}
       {transfer ? <TransferTask row={transfer} busy={submitting} onComplete={() => onCompleteTransfer(transfer)} />
         : active ? <Panel inset title={`Ваш пост ${String(active.bay_id).padStart(2, '0')} · ${bays.find(bay => bay.id === active.bay_id)?.name ?? ''}`}>
         <div className="split"><div><strong>{active.model}</strong><p className="muted">{active.plate}</p></div><StatusTag status={active.status} /></div>

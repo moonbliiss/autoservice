@@ -4,6 +4,7 @@ import { createWorkshopQueries } from './queries.js';
 import { createWorkshopMutations } from './mutations.js';
 import { createInventory } from './inventory.js';
 import { createWorkTime } from './workTime.js';
+import { requireValue } from './validation.js';
 
 const accounts = { advisor: 1, mechanic: 2, client: 3, client2: 4, mechanic2: 5 };
 
@@ -31,5 +32,12 @@ export function openWorkshop(file, { now = Date.now } = {}) {
 
   const { list, details, dashboard, tracking } = queries;
   const { restock, orderSupply, receiveSupply, issueParts } = inventory;
-  return { profile, list, details, dashboard, tracking, ...mutations, restock, orderSupply, receiveSupply, issueParts, close: database.close };
+  function setPresence(user, { status }) {
+    requireValue(['advisor', 'stockkeeper'].includes(user.role), 'Отметка присутствия доступна приёмщику и запчастисту.', 403);
+    requireValue(status === 'present' || status === 'away', 'Выберите статус присутствия.');
+    database.run(`INSERT INTO staff_presence(account_id,status) VALUES (?,?)
+      ON CONFLICT(account_id) DO UPDATE SET status=excluded.status`, user.id, status);
+    return { status };
+  }
+  return { profile, list, details, dashboard, tracking, setPresence, ...mutations, restock, orderSupply, receiveSupply, issueParts, close: database.close };
 }

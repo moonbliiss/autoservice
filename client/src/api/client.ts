@@ -1,4 +1,4 @@
-import type { Dashboard, Profile, RequestAction, RequestDetail, RequestTracking, Submission } from './types'
+import type { Dashboard, PresenceStatus, Profile, RequestAction, RequestDetail, RequestTracking, Submission } from './types'
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -22,6 +22,7 @@ async function api<T>(path: string, payload?: Submission): Promise<T> {
 }
 
 export const getDashboard = () => api<Dashboard>('dashboard')
+export const savePresence = (status: PresenceStatus) => api<{ status: PresenceStatus }>('presence', { status })
 export const selectProfile = (profile: Profile) => api('session', { profile })
 export const getRequest = (id: number) => api<RequestDetail>('requests/' + id)
 export const createRequest = (data: Submission) => api<RequestDetail>('requests', data)

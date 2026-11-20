@@ -37,6 +37,7 @@ const server = createServer(async (req, res) => {
       fail(404, 'Страница не найдена.');
     }
     if (req.method === 'GET' && path === '/api/dashboard') return response(res, 200, workshop.dashboard(user));
+    if (req.method === 'POST' && path === '/api/presence') return response(res, 200, workshop.setPresence(user, await body(req)));
     if (req.method === 'POST' && path === '/api/requests') return response(res, 201, workshop.createRequest(user, await body(req)));
     if (req.method === 'POST' && path === '/api/stock') return response(res, 200, workshop.restock(user, await body(req)));
     if (req.method === 'POST' && path === '/api/stock/issue') return response(res, 200, workshop.issueParts(user, await body(req)));

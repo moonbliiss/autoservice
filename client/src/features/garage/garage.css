@@ -54,3 +54,10 @@
 .arrival-marker { background: #e9f1f5; border-color: #7996a4; }
 .arrival-marker[data-occupied="true"][aria-pressed="false"] { background: #bad5e4; border-color: #6b96aa; }
 @media (max-width: 460px) { .workshop-map-main .camera { top: 8px; right: 9px; } }
+.map-zone { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; color: #263c32; background: #f1f4eae8; border: 1px solid #cad4c6; border-radius: 5px; padding: 1px 6px; font-size: .75rem; font-weight: 700; }
+.desk-marker { display: inline-flex; align-items: center; gap: 5px; }
+.reception-marker { background: #fff0d5; border-color: #bca276; }
+@media (max-width: 460px) {
+  .map-zone { padding: 1px 3px; font-size: .64rem; }
+  .desk-marker { padding: 2px 4px; font-size: .7rem; }
+}

@@ -2,6 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openWorkshop } from '../server/workshop/service.js';
 
+test('приёмщик и запчастист меняют свой статус, механик его видит', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const stockkeeper = workshop.profile('stockkeeper');
+  const mechanic = workshop.profile('mechanic');
+  const client = workshop.profile('client');
+  const statuses = () => workshop.dashboard(mechanic).staff_presence.map(({ role, status }) => [role, status]);
+  assert.deepEqual(statuses(), [['advisor', null], ['stockkeeper', null]]);
+  assert.equal(workshop.dashboard(client).staff_presence, undefined);
+  assert.throws(() => workshop.setPresence(mechanic, { status: 'present' }), { status: 403 });
+  assert.throws(() => workshop.setPresence(advisor, { status: 'unknown' }), { status: 400 });
+  workshop.setPresence(advisor, { status: 'present' });
+  workshop.setPresence(stockkeeper, { status: 'away', account_id: advisor.id });
+  assert.deepEqual(statuses(), [['advisor', 'present'], ['stockkeeper', 'away']]);
+  workshop.setPresence(advisor, { status: 'away' });
+  assert.deepEqual(statuses(), [['advisor', 'away'], ['stockkeeper', 'away']]);
+});
+
 test('заявка проходит диагностику, согласование, ремонт, оплату и выдачу', t => {
   const workshop = openWorkshop(':memory:');
   t.after(() => workshop.close());

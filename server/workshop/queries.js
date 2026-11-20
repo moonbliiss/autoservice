@@ -167,6 +167,8 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
       result.vehicles = all('SELECT id, model, plate, mileage FROM vehicles WHERE client_id=? ORDER BY id', user.id);
       return result;
     }
+    result.staff_presence = all(`SELECT a.id,a.name,a.role,p.status FROM accounts a
+      LEFT JOIN staff_presence p ON p.account_id=a.id WHERE a.role IN ('advisor','stockkeeper') ORDER BY a.role,a.id`);
 
     if (user.role === 'stockkeeper' || user.role === 'manager') {
       result.parts = all('SELECT * FROM parts ORDER BY id');
