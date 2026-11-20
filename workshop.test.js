@@ -1,0 +1,93 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { openWorkshop } from './workshop.js';
+
+test('заявка проходит диагностику, согласование, ремонт, оплату и выдачу', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const client = workshop.profile('client');
+  const mechanic = workshop.profile('mechanic');
+  const otherClient = workshop.profile('client2');
+  const appointment = '2027-06-10T10:30';
+  const draft = workshop.createRequest(client, { model: 'Renault Logan', plate: 'А100АА55', description: 'Шум при торможении' });
+  const id = draft.id;
+  const step = (user, action, input = {}) => workshop.action(user, id, action, input);
+  assert.equal(draft.status, 'new');
+  assert.throws(() => workshop.details(otherClient, id), { status: 404 });
+  assert.throws(() => workshop.createRequest(otherClient, { vehicle_id: 1, description: 'Чужое авто' }), { status: 404 });
+  assert.equal(step(advisor, 'schedule', { appointment }).appointment, appointment);
+  assert.equal(step(advisor, 'schedule', { appointment: '2027-06-10T11:30' }).appointment, '2027-06-10T11:30');
+  assert.equal(step(advisor, 'receive', { mileage: 120000, priority: 'urgent', note: 'Переданы два ключа' }).status, 'received');
+  assert.equal(workshop.details(client, id).intake_note, undefined);
+  const assignment = { mechanic_id: mechanic.id, bay_id: 3, instructions: 'Проверить колодки и измерить износ.' };
+  assert.throws(() => step(advisor, 'diagnose', assignment), /уже работает/);
+  assert.throws(() => step(advisor, 'diagnose', { ...assignment, bay_id: 2 }), /пост уже занят/);
+  workshop.action(mechanic, 1, 'diagnosisReport', { result: 'Люфта нет', minutes: 15 });
+  assert.equal(step(advisor, 'diagnose', assignment).bay_id, 3);
+  assert.equal(step(mechanic, 'startDiagnosis').status, 'diagnosing');
+  assert.equal(step(mechanic, 'diagnosisReport', { result: 'Износ колодок 85%', recommendations: 'Замена', minutes: 24 }).bay_id, null);
+  assert.equal(workshop.details(client, id).reports.length, 0);
+
+  const quote = { eta: '2027-06-11T17:00', lines: [
+    { kind: 'service', catalog_id: 4, quantity: 1, price: 3200 },
+    { kind: 'part', catalog_id: 3, quantity: 1, price: 3400 },
+  ] };
+  assert.equal(step(advisor, 'estimate', { ...quote, version: 0 }).total, 6600);
+  assert.equal(step(client, 'decline', { version: 1, note: 'Уточните производителя' }).status, 'declined');
+  assert.equal(step(advisor, 'estimate', { ...quote, version: 1, note: 'Производитель указан в смете' }).estimate_version, 2);
+  assert.throws(() => step(client, 'approve', { version: 1 }), { status: 409 });
+  assert.throws(() => step(advisor, 'approve', { version: 2 }), { status: 409 });
+  assert.equal(step(client, 'approve', { version: 2 }).status, 'approved');
+  const repair = { ...assignment, instructions: 'Заменить колодки, проверить торможение.' };
+  assert.equal(step(advisor, 'assign', repair).status, 'repair_assigned');
+  step(mechanic, 'startRepair');
+  assert.equal(step(mechanic, 'pause', { note: 'Ждём детали' }).status, 'paused');
+  assert.equal(step(advisor, 'release').bay_id, null);
+  assert.throws(() => step(mechanic, 'resume'), { status: 409 });
+  step(advisor, 'assign', repair);
+  step(mechanic, 'startRepair');
+  const report = { result: 'Колодки заменены, торможение проверено', minutes: 45 };
+  const stock = () => workshop.dashboard(advisor).parts.find(part => part.id === 3).stock;
+  const before = stock();
+  assert.throws(() => step(mechanic, 'repairReport', { ...report, parts: [{ id: 3, quantity: 1 }, { id: 3, quantity: 1 }] }), /превышает/);
+  assert.equal(stock(), before);
+  assert.equal(workshop.details(mechanic, id).reports.length, 1);
+  assert.equal(step(mechanic, 'repairReport', { ...report, parts: [{ id: 3, quantity: 1 }] }).status, 'inspection');
+  assert.equal(stock(), before - 1);
+  step(advisor, 'rework', { note: 'Повторить проверку на стенде' });
+  step(mechanic, 'startRepair');
+  assert.equal(workshop.details(mechanic, id).parts_remaining[3], 0);
+  step(mechanic, 'repairReport', { ...report, minutes: 10 });
+  assert.equal(step(advisor, 'ready', { note: 'Контроль пройден', public_note: 'Готово, можно забирать' }).bay_id, null);
+  assert.throws(() => step(advisor, 'issue'), { status: 409 });
+  assert.equal(step(advisor, 'payment', { amount: 2000, method: 'cash' }).paid, 2000);
+  assert.throws(() => step(advisor, 'payment', { amount: 4601, method: 'card' }), { status: 400 });
+  assert.equal(step(advisor, 'payment', { amount: 4600, method: 'card' }).paid, 6600);
+  assert.equal(step(advisor, 'issue').status, 'issued');
+  const finished = workshop.details(client, id);
+  assert.equal(finished.status, 'issued');
+  assert.equal(finished.paid, 6600);
+  assert.ok(finished.history.some(event => event.note === 'Готово, можно забирать'));
+  assert.ok(!finished.history.some(event => event.note === 'Ждём детали'));
+});
+
+test('отмена визита, возврат без ремонта и пополнение склада', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const client = workshop.profile('client');
+  const other = workshop.profile('client2');
+  assert.throws(() => workshop.action(other, 3, 'cancel', {}), { status: 404 });
+  assert.equal(workshop.action(client, 3, 'cancel', { note: 'Перенесу на следующую неделю' }).status, 'cancelled');
+  const request = workshop.createRequest(client, { vehicle_id: 2, description: 'Проверить колёса' });
+  workshop.action(advisor, request.id, 'receive', { mileage: 61500 });
+  workshop.action(advisor, request.id, 'estimate', { version: 0, lines: [{ kind: 'custom', name: 'Работы', quantity: 1, price: 1500 }] });
+  workshop.action(client, request.id, 'decline', { version: 1, note: 'Отложить ремонт' });
+  const returned = workshop.action(advisor, request.id, 'returnCar', { note: 'Автомобиль можно забрать сегодня' });
+  assert.equal(returned.total, 0);
+  assert.equal(workshop.action(advisor, request.id, 'issue', {}).status, 'issued');
+  assert.throws(() => workshop.restock(client, { part_id: 2, quantity: 5, note: 'Накладная' }), { status: 403 });
+  assert.equal(workshop.restock(advisor, { part_id: 2, quantity: 5, note: 'Накладная 842' }).stock, 13);
+  assert.equal(workshop.dashboard(advisor).movements[0].note, 'Накладная 842');
+});
