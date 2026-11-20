@@ -6,7 +6,7 @@ export function ParkingStatus({ parking_space, parking_reason, parts_expected_da
   'parking_space' | 'parking_reason' | 'parts_expected_date'>) {
   if (parking_space === null) return null
   return <Panel inset title={`Парковка · место ${parking_space}`}>
-    <p>Ожидаются запчасти: {parking_reason}</p>
+    <p>{parking_reason ?? 'Ожидаются запчасти для продолжения работ.'}</p>
     {parts_expected_date && <p className="muted">Ожидаемая поставка: {dateOnly(parts_expected_date)}</p>}
   </Panel>
 }

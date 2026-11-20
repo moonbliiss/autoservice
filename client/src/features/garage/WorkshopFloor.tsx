@@ -14,8 +14,8 @@ function moveAction(actions: RoutingAction[], place: MapLocation) {
   return actions.find(key => key !== 'park')
 }
 
-export function WorkshopFloor({ dashboard, onOpen, onMove }: {
-  dashboard: Dashboard; onOpen: (id: number) => void; onMove: MoveRequest
+export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock }: {
+  dashboard: Dashboard; onOpen: (id: number) => void; onMove: MoveRequest; onOpenStock?: () => void
 }) {
   const [selection, setSelection] = useState<{ place: MapLocation; requestId: number | null } | null>(null)
   const bays = dashboard.bays ?? []
@@ -53,7 +53,8 @@ export function WorkshopFloor({ dashboard, onOpen, onMove }: {
       <h2>Карта цеха и парковки</h2>
       <p className="muted">Парковка {occupied} / {parking.length}</p>
     </div>
-      <GarageMap bays={bays} parking={parking} selected={selected?.place ?? null} targets={targets} onSelect={selectPlace} />
+      <GarageMap bays={bays} parking={parking} selected={selected?.place ?? null} targets={targets} onSelect={selectPlace}
+        onOpenStock={onOpenStock} />
     </section>
     <Panel title={title}>
       <div className="map-selection">
@@ -65,6 +66,9 @@ export function WorkshopFloor({ dashboard, onOpen, onMove }: {
         </button> : selected?.vehicle?.model ? <p>{selected.vehicle.model}</p> : selected && <p className="muted">Свободно</p>}
         {(!selected || targets.length > 0) && <p className="muted">
           {targets.length > 0 ? 'Выберите подсвеченное свободное место на карте.' : 'Нажмите на машину, пост или парковочное место.'}
+        </p>}
+        {actions.includes('park') && targets.some(key => key.startsWith('parking:')) && <p className="muted">
+          Нажатие на место парковки сразу переводит машину в ожидание запчастей.
         </p>}
         {selected && <Button variant="text-button" onClick={() => setSelection(null)}>Сбросить выбор</Button>}
       </div>

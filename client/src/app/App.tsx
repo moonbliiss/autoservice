@@ -23,12 +23,15 @@ export function App() {
       {!dashboard ? <p>{busy ? 'Загрузка мастерской…'
         : 'Не удалось подключиться к мастерской. Проверьте запуск сервера и обновите страницу.'}</p>
         : detail ? <RequestDetails row={detail} role={dashboard.user.role}
-          onAction={key => showAction({ key, row: detail })} onBack={() => navigate(section)} />
+          onAction={key => showAction({ key, row: detail })} onBack={() => navigate(section)}
+          onOrderPart={() => showAction({ key: 'orderSupply', requestId: detail.id })} />
         : section === 'overview' ? <Overview dashboard={dashboard} onMove={moveOnMap} onOpen={openRequest}
-          onNewRequest={onNewRequest} onRequests={() => navigate('requests')} />
+          onNewRequest={onNewRequest} onRequests={() => navigate('requests')} onStock={() => navigate('stock')} />
         : section === 'requests' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
           onSearch={setSearch} filter={filter} onFilter={setFilter} onNewRequest={onNewRequest} />
-        : section === 'stock' ? <StockView dashboard={dashboard} onRestock={() => showAction({ key: 'restock' })} />
+        : section === 'stock' ? <StockView dashboard={dashboard} onRestock={() => showAction({ key: 'restock' })}
+          onOrder={partId => showAction({ key: 'orderSupply', partId })}
+          onReceive={supply => showAction({ key: 'receiveSupply', supply })} onOpenRequest={openRequest} />
         : <CarsView dashboard={dashboard} onNewRequest={onNewRequest} />}
     </AppShell>
     {dashboard && action && <ActionDialog action={action} dashboard={dashboard} busy={submitting} error={formError}

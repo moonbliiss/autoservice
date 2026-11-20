@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { availableActions, transitions } from './rules.js';
 import { date, integer, requireValue, str } from './validation.js';
 
-export function createWorkshopMutations({ run, get, transaction }, queries, account) {
+export function createWorkshopMutations({ run, get, transaction }, queries, account, consumeParts) {
   const { amounts, details, estimateRows, getRequest, permitted } = queries;
 
   function addHistory(id, user, title, note = null, isPublic = 1) {
@@ -75,8 +75,15 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     requireValue(get('SELECT id FROM parking_spaces WHERE id=?', space), 'Выберите существующее место на парковке.');
     requireValue(!get('SELECT 1 FROM parking_assignments WHERE space_id=? AND order_id<>?', space, row.order_id),
       'Это место на парковке уже занято.', 409);
-    const reason = str(input.parking_reason, 'Какие запчасти ожидаются', { limit: 600 });
-    const expected = date(input.parts_expected_date, 'Ожидаемая дата поставки', true);
+    const supply = get(`SELECT CASE WHEN COUNT(s.expected_date)=COUNT(*) THEN MAX(s.expected_date) END AS eta,
+      GROUP_CONCAT(DISTINCT p.name) AS parts FROM part_supplies s JOIN parts p ON p.id=s.part_id
+      WHERE s.request_id=? AND s.received<s.quantity`, row.id);
+    const defaultReason = supply.parts ? 'Ожидаются запчасти: ' + supply.parts.replaceAll(',', ', ').slice(0, 575)
+      : 'Ожидаются запчасти для продолжения работ.';
+    const reason = str(input.parking_reason, 'Какие запчасти ожидаются', { optional: true, limit: 600 })
+      ?? row.parking_reason ?? defaultReason;
+    const expected = input.parts_expected_date === undefined
+      ? row.parts_expected_date ?? supply.eta : date(input.parts_expected_date, 'Ожидаемая дата поставки', true);
     run(`INSERT INTO parking_assignments(order_id,space_id,reason,expected_date) VALUES (?,?,?,?)
       ON CONFLICT(order_id) DO UPDATE SET space_id=excluded.space_id, reason=excluded.reason, expected_date=excluded.expected_date`,
     row.order_id, space, reason, expected);
@@ -90,24 +97,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     const minutes = integer(input.minutes, 'Затрачено минут', 1, 20000);
     const reportId = run('INSERT INTO work_reports(order_id,mechanic_id,kind,result,recommendations,minutes) VALUES (?,?,?,?,?,?)',
       row.order_id, user.id, kind, result, recommendations, minutes).lastInsertRowid;
-    if (kind === 'diagnosis') return;
-    const approved = new Map();
-    for (const line of estimateRows(row)) {
-      if (line.part_id) approved.set(line.part_id, (approved.get(line.part_id) || 0) + line.quantity);
-    }
-    const used = input.parts ?? [];
-    requireValue(Array.isArray(used) && used.length <= 20, 'Проверьте список запчастей.');
-    for (const item of used) {
-      const partId = integer(item?.id, 'Запчасть');
-      const quantity = integer(item?.quantity, 'Количество запчастей', 1, 100);
-      const previouslyUsed = get(`SELECT COALESCE(SUM(-s.quantity),0) AS qty FROM stock_movements s
-        JOIN work_reports w ON w.id=s.report_id WHERE w.order_id=? AND s.part_id=? AND s.quantity<0`,
-      row.order_id, partId).qty;
-      requireValue(quantity + previouslyUsed <= (approved.get(partId) || 0), 'Расход запчастей превышает согласованное количество.');
-      requireValue(run('UPDATE parts SET stock=stock-? WHERE id=? AND stock>=?', quantity, partId, quantity).changes,
-        'На складе недостаточно запчастей.', 409);
-      run('INSERT INTO stock_movements(part_id,report_id,account_id,quantity) VALUES (?,?,?,?)', partId, reportId, user.id, -quantity);
-    }
+    if (kind === 'repair') consumeParts(user, row.order_id, estimateRows(row), input.parts ?? [], reportId);
   }
 
   function saveEstimate(row, input) {
@@ -184,7 +174,15 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           updateOrder(row, decision === 'approve' ? 'approved' : 'declined');
           break;
         }
-        case 'assign': note = assignOrder(row, input, 'repair_assigned'); break;
+        case 'assign': {
+          let stage = 'repair_assigned';
+          if (row.status === 'waiting_parts') {
+            if (['diagnosis_assigned', 'diagnosing'].includes(row.work_status)) stage = 'diagnosis_assigned';
+            if (row.work_status === 'inspection') stage = 'inspection';
+          }
+          note = assignOrder(row, input, stage);
+          break;
+        }
         case 'moveBay': {
           const stage = row.status === 'diagnosing' ? 'diagnosis_assigned'
             : row.status === 'inspection' ? 'inspection' : 'repair_assigned';
@@ -202,6 +200,10 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
         }
         case 'release':
           updateOrder(row, 'paused', { bay_id: null });
+          break;
+        case 'issueParts':
+          requireValue(Array.isArray(input.parts) && input.parts.length > 0, 'Укажите количество хотя бы одной запчасти.');
+          consumeParts(user, row.order_id, money.estimate, input.parts);
           break;
         case 'repairReport':
           saveReport(user, row, input, 'repair');
@@ -233,22 +235,10 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           updateOrder(row, 'issued', { bay_id: null });
           break;
       }
-      addHistory(id, user, transitions[key][2], note, key === 'release' ? 0 : 1);
+      addHistory(id, user, transitions[key][2], note, ['release', 'issueParts'].includes(key) ? 0 : 1);
       return details(user, id);
     });
   }
 
-  function restock(user, input) {
-    requireValue(user.role === 'advisor', 'Пополнение доступно мастеру-приёмщику.', 403);
-    const id = integer(input.part_id, 'Запчасть');
-    const qty = integer(input.quantity, 'Количество', 1, 10000);
-    const note = str(input.note, 'Поставщик или накладная');
-    return transaction(() => {
-      requireValue(run('UPDATE parts SET stock=stock+? WHERE id=?', qty, id).changes, 'Запчасть не найдена.', 404);
-      run('INSERT INTO stock_movements(part_id,account_id,quantity,note) VALUES (?,?,?,?)', id, user.id, qty, note);
-      return { stock: get('SELECT stock FROM parts WHERE id=?', id).stock };
-    });
-  }
-
-  return { createRequest, action, restock };
+  return { createRequest, action };
 }

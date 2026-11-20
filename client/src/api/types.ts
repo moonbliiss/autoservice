@@ -10,6 +10,7 @@ export type RequestAction =
   | 'estimate' | 'approve' | 'decline' | 'assign' | 'startRepair' | 'pause' | 'resume'
   | 'repairReport' | 'ready' | 'rework' | 'release' | 'returnCar' | 'payment' | 'issue'
   | 'recordDecision' | 'moveBay' | 'park'
+  | 'issueParts'
 export type PaymentMethod = 'cash' | 'card' | 'transfer'
 export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose'>
 
@@ -63,6 +64,7 @@ export interface RequestDetail extends RequestSummary {
   reports: { id: number; kind: 'diagnosis' | 'repair'; mechanic: string; minutes: number; created_at: string;
     result: string; recommendations: string | null; parts: string | null }[]
   parts_remaining?: Record<number, number>
+  stock_usage?: { part_id: number; name: string; quantity: number }[]
   total?: number
   paid?: number
   payments?: { id: number; method: PaymentMethod; created_at: string; amount: number }[]
@@ -94,6 +96,19 @@ interface NamedItem { id: number; name: string }
 interface CatalogItem extends NamedItem { price: number }
 export interface Part extends NamedItem { stock: number; price?: number; sku?: string }
 
+export interface PartSupply {
+  id: number
+  part_id: number
+  request_id: number | null
+  name: string
+  sku: string
+  supplier: string
+  quantity: number
+  received: number
+  expected_date: string | null
+  created_at: string
+}
+
 export interface Dashboard {
   user: { id: number; role: Role; name: string }
   requests: RequestSummary[]
@@ -104,7 +119,9 @@ export interface Dashboard {
   parts?: Part[]
   mechanics?: NamedItem[]
   services?: CatalogItem[]
-  movements?: { quantity: number; note: string | null; created_at: string; name: string; employee: string }[]
+  supplies?: PartSupply[]
+  movements?: { id: number; quantity: number; note: string | null; created_at: string; name: string; employee: string;
+    supply_id: number | null; request_id: number | null }[]
 }
 
 export interface Submission {

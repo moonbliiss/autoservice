@@ -5,8 +5,8 @@ import { RequestTable, type OpenRequest } from '../requests/RequestTable'
 import { WorkshopFloor, type MoveRequest } from '../garage/WorkshopFloor'
 import './overview.css'
 
-export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests }: {
-  dashboard: Dashboard; onOpen: OpenRequest; onNewRequest: () => void; onRequests: () => void; onMove: MoveRequest
+export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, onStock }: {
+  dashboard: Dashboard; onOpen: OpenRequest; onNewRequest: () => void; onRequests: () => void; onMove: MoveRequest; onStock: () => void
 }) {
   const { requests, user: { role }, bays = [] } = dashboard
   const ready = requests.filter(row => row.status === 'ready').length
@@ -19,7 +19,8 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests }
     ]} />
     <Panel title="История обслуживания"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
   </>
-  const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove} />
+  const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove}
+    onOpenStock={role === 'advisor' ? onStock : undefined} />
   if (role === 'mechanic') {
     const active = requests.find(row => row.status !== 'paused' && workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me)
     return <>

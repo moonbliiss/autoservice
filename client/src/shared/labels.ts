@@ -17,6 +17,7 @@ export const actionLabels = {
   release: 'Освободить пост', returnCar: 'Подготовить возврат', payment: 'Зарегистрировать оплату',
   issue: 'Выдать автомобиль', newRequest: 'Новая заявка', restock: 'Пополнить склад',
   recordDecision: 'Зафиксировать ответ клиента', moveBay: 'Переназначить пост или механика', park: 'Перевести на парковку',
-} satisfies Record<RequestAction | 'newRequest' | 'restock', string>
+  issueParts: 'Взять запчасти со склада', orderSupply: 'Заказать запчасть', receiveSupply: 'Принять поставку',
+} satisfies Record<RequestAction | 'newRequest' | 'restock' | 'orderSupply' | 'receiveSupply', string>
 
 export const paymentLabels = { cash: 'Наличные', card: 'Карта', transfer: 'Перевод' } satisfies Record<PaymentMethod, string>

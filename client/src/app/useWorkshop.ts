@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, createRequest, errorMessage, getDashboard, getRequest, restock, selectProfile, updateRequest } from '../api/client'
+import { ApiError, createRequest, errorMessage, getDashboard, getRequest, orderSupply, receiveSupply, restock, selectProfile, updateRequest } from '../api/client'
 import type { Dashboard, Profile, RequestDetail, RoutingAction, Submission } from '../api/types'
 import type { FormAction } from '../features/actions/ActionFields'
 import type { MapLocation } from '../features/garage/mapLayout'
@@ -168,6 +168,20 @@ export function useWorkshop() {
   async function moveOnMap(id: number, key: RoutingAction, destination: MapLocation) {
     if (locked.current || action) return
     const before = ++revision.current
+    if (key === 'park') {
+      locked.current = true
+      setSubmitting(true)
+      try {
+        await updateRequest(id, key, { parking_space: destination.id })
+        await refreshDashboard(`Автомобиль переведён на место ${destination.id}. Ожидает запчасти.`)
+      } catch (error) {
+        await refreshDashboard(errorMessage(error), true)
+      } finally {
+        locked.current = false
+        setSubmitting(false)
+      }
+      return
+    }
     try {
       const row = await getRequest(id)
       if (before !== revision.current) return
@@ -181,6 +195,15 @@ export function useWorkshop() {
     }
   }
 
+  async function refreshDashboard(message: string, error = false) {
+    try {
+      setDashboard(await getDashboard())
+      notify(message, error)
+    } catch (cause) {
+      notify(message + ' Не удалось обновить данные. ' + errorMessage(cause), true)
+    }
+  }
+
   async function submitAction(data: Submission) {
     if (!action || locked.current) return
     ++revision.current
@@ -190,6 +213,8 @@ export function useWorkshop() {
     const { key } = action
     try {
       if (key === 'restock') await restock(data)
+      else if (key === 'orderSupply') await orderSupply(data)
+      else if (key === 'receiveSupply') await receiveSupply(action.supply.id, data)
       else if (key === 'newRequest') setDetail(await createRequest(data))
       else {
         const updated = await updateRequest(action.row.id, key, data)
@@ -202,12 +227,12 @@ export function useWorkshop() {
       return
     }
     setAction(null)
-    const message = key === 'newRequest' ? 'Заявка отправлена.' : key === 'estimate' ? 'Смета отправлена клиенту.' : 'Изменения сохранены.'
+    const message = key === 'newRequest' ? 'Заявка отправлена.' : key === 'estimate' ? 'Смета отправлена клиенту.'
+      : key === 'orderSupply' ? 'Заказ поставщику добавлен в поставки.'
+      : key === 'receiveSupply' ? 'Запчасти оприходованы на склад.'
+      : key === 'issueParts' ? 'Запчасти выданы и списаны со склада.' : 'Изменения сохранены.'
     try {
-      setDashboard(await getDashboard())
-      notify(message)
-    } catch (error) {
-      notify(message + ' Не удалось обновить данные. ' + errorMessage(error), true)
+      await refreshDashboard(message)
     } finally {
       locked.current = false
       setSubmitting(false)

@@ -8,7 +8,7 @@ import './request-details.css'
 
 const actionOrder: RequestAction[] = [
   'receive', 'schedule', 'cancel', 'diagnose', 'startDiagnosis', 'diagnosisReport', 'estimate',
-  'approve', 'decline', 'recordDecision', 'assign', 'startRepair', 'resume', 'repairReport', 'park', 'moveBay',
+  'approve', 'decline', 'recordDecision', 'assign', 'startRepair', 'resume', 'issueParts', 'repairReport', 'park', 'moveBay',
   'pause', 'release', 'ready', 'rework', 'returnCar', 'payment', 'issue',
 ]
 
@@ -59,8 +59,8 @@ function actionTitle(action: RequestAction, row: RequestDetail) {
   return actionLabels[action]
 }
 
-export function RequestDetails({ row, role, onAction, onBack }: {
-  row: RequestDetail; role: Role; onAction: (action: RequestAction) => void; onBack: () => void
+export function RequestDetails({ row, role, onAction, onBack, onOrderPart }: {
+  row: RequestDetail; role: Role; onAction: (action: RequestAction) => void; onBack: () => void; onOrderPart: () => void
 }) {
   const actions = actionOrder.filter(key => row.actions.includes(key))
   const facts = [
@@ -102,9 +102,16 @@ export function RequestDetails({ row, role, onAction, onBack }: {
             <Button key={key} variant={index === 0 ? 'primary' : 'secondary'} onClick={() => onAction(key)}>{actionTitle(key, row)}</Button>
           )}</div>}
         </Panel>
-        <EstimatePanel row={row} role={role} /><ReportsPanel row={row} />
+        <EstimatePanel row={row} role={role} />
+        {Boolean(row.stock_usage?.length) && <Panel inset title="Выдано со склада">
+          {row.stock_usage?.map(part => <p className="split line-item" key={part.part_id}><span>{part.name}</span><strong>× {part.quantity}</strong></p>)}
+        </Panel>}
+        <ReportsPanel row={row} />
       </div>
       <div className="column"><PaymentPanel row={row} />
+        {role === 'advisor' && row.order_id && !['cancelled', 'ready', 'issued'].includes(row.status) && <Panel inset title="Запчасти">
+          <Button onClick={onOrderPart}>Заказать запчасть</Button>
+        </Panel>}
         <Panel inset title="История заявки"><ol className="timeline">{row.history.map((event, index) =>
           <li key={index}><h3>{event.title}</h3><time className="muted">{dateTime(event.created_at)}</time>
             {event.note && <p className="request-text">{event.note}</p>}</li>

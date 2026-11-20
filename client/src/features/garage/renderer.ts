@@ -1,14 +1,14 @@
 import type { Bay, ParkingSpace } from '../../api/types'
 import { carModels, fixtures, flat, ground, lifts, type Face, type Point } from './geometry'
 import {
-  bayLocations, locationKey, parkingDepth, parkingWidth, sceneLocations, siteBounds,
+  bayLocations, locationKey, parkingDepth, parkingWidth, sceneLocations, siteBounds, warehouse,
   type MapLocation, type SceneLocation,
 } from './mapLayout'
 import { createMotion, motionPose, restPose, type VehicleMotion, type VehiclePose } from './vehicleMotion'
 
 interface Camera { scale: number; x: number; y: number }
 interface VehicleBounds { place: SceneLocation; left: number; right: number; top: number; bottom: number; depth: number }
-export interface MarkerPosition { place: SceneLocation; x: number; y: number; hidden: boolean }
+export interface MarkerPosition { place: SceneLocation | 'warehouse'; x: number; y: number; hidden: boolean }
 
 const cs = Math.cos(.34), sn = Math.sin(.34)
 const ce = Math.cos(.71), se = Math.sin(.71)
@@ -167,11 +167,14 @@ export function mountGarage(
     for (const { face, pose } of visible) drawFace(face, cam, pose)
     if (markersChanged) {
       markersChanged = false
-      onMarkers(sceneLocations.map(place => {
-        const z = place.kind === 'bay' ? 4.4 : place.z + (place.id <= 5 ? -2 : 2.3)
-        const [x, y] = project([place.x, .02, z], cam)
+      const marker = (place: MarkerPosition['place'], point: Point): MarkerPosition => {
+        const [x, y] = project(point, cam)
         return { place, x, y, hidden: x < 12 || y < 22 || x > viewport.width - 12 || y > viewport.height - 4 }
-      }))
+      }
+      onMarkers([...sceneLocations.map(place => {
+        const z = place.kind === 'bay' ? 4.4 : place.z + (place.id <= 5 ? -2 : 2.3)
+        return marker(place, [place.x, .02, z])
+      }), marker('warehouse', [15.3, 3.2, -11.5])])
     }
     if (motions.size) scheduleDraw()
   }
@@ -214,6 +217,12 @@ export function mountGarage(
       const depth = (py - cam.y) / (cam.scale * se)
       const x = across * cs + depth * sn
       const z = depth * cs - across * sn
+      const raised = 1.5 * ce / se
+      if ([0, raised].some(height => {
+        const warehouseX = x + height * sn
+        const warehouseZ = z + height * cs
+        return warehouseX >= warehouse.left && warehouseX <= warehouse.right && warehouseZ >= warehouse.back && warehouseZ <= warehouse.front
+      })) return 'warehouse' as const
       return sceneLocations.find(place => place.kind === 'bay'
         ? Math.abs(x - place.x) <= 2.55 && z >= -3.53 && z <= 4.19
         : Math.abs(x - place.x) <= parkingWidth / 2 && Math.abs(z - place.z) <= parkingDepth / 2)

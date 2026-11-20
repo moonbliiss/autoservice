@@ -12,7 +12,8 @@ export const parkingAisle = 3.6
 export const parkingEntrance = 11.05
 export const parkingWidth = 3.1
 export const parkingDepth = 4.9
-export const siteBounds = { left: -11, right: 29, back: -6.2, front: 12.5 }
+export const warehouse = { left: 10.6, right: 22.1, back: -12.1, front: -5.85 }
+export const siteBounds = { left: -11, right: 29, back: -12.65, front: 12.5 }
 
 export const bayLocations: SceneLocation[] = garagePosts.map(({ id, x }) => ({ kind: 'bay', id, x, z: 0, yaw: 0 }))
 export const parkingLocations: SceneLocation[] = Array.from({ length: 10 }, (_, index) => ({

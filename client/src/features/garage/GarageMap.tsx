@@ -6,9 +6,9 @@ import './garage.css'
 
 const noTargets: string[] = []
 
-export function GarageMap({ bays, parking, selected, targets = noTargets, onSelect }: {
+export function GarageMap({ bays, parking, selected, targets = noTargets, onSelect, onOpenStock }: {
   bays: readonly Bay[]; parking: readonly ParkingSpace[]; selected: MapLocation | null
-  targets?: string[]; onSelect: (place: MapLocation) => void
+  targets?: string[]; onSelect: (place: MapLocation) => void; onOpenStock?: () => void
 }) {
   const stage = useRef<HTMLElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -32,7 +32,7 @@ export function GarageMap({ bays, parking, selected, targets = noTargets, onSele
   }, [bays, parking, selected, targets])
 
   return <section className="scene" ref={stage} aria-label="Интерактивная 3D-карта">
-    <canvas id="garage" ref={canvas} aria-label="3D-модель цеха и парковки"
+    <canvas id="garage" ref={canvas} aria-label="3D-модель цеха, парковки и склада"
       onPointerDown={event => { pointerStart.current = { x: event.clientX, y: event.clientY } }}
       onPointerCancel={() => { pointerStart.current = null }}
       onClick={event => {
@@ -41,10 +41,14 @@ export function GarageMap({ bays, parking, selected, targets = noTargets, onSele
         if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return
         const bounds = event.currentTarget.getBoundingClientRect()
         const place = renderer.current?.pick(event.clientX - bounds.left, event.clientY - bounds.top)
-        if (place) onSelect(place)
+        if (place === 'warehouse') onOpenStock?.()
+        else if (place) onSelect(place)
       }} />
-    <div className="markers" aria-label="Подъёмники и парковочные места">
+    <div className="markers" aria-label="Подъёмники, парковочные места и склад">
       {positions.map(({ place, x, y, hidden }) => {
+        if (place === 'warehouse') return onOpenStock && <button key={place} className="marker warehouse-marker"
+          type="button" hidden={hidden} style={{ left: x, top: y }} aria-label="Запчастист · открыть склад"
+          data-location={place} onClick={onOpenStock}>Склад</button>
         const key = locationKey(place)
         const bay = place.kind === 'bay'
         const model = (bay ? bays : parking).find(entry => entry.id === place.id)?.model

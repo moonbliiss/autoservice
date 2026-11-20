@@ -118,6 +118,38 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS part_supplies (
+  id INTEGER PRIMARY KEY,
+  part_id INTEGER NOT NULL REFERENCES parts(id),
+  request_id INTEGER REFERENCES service_requests(id),
+  supplier TEXT NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  received INTEGER NOT NULL DEFAULT 0 CHECK (received BETWEEN 0 AND quantity),
+  expected_date TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS supplies_by_request ON part_supplies(request_id);
+
+CREATE TABLE IF NOT EXISTS supply_receipts (
+  movement_id INTEGER PRIMARY KEY REFERENCES stock_movements(id),
+  supply_id INTEGER NOT NULL REFERENCES part_supplies(id)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS repair_stock_issues (
+  movement_id INTEGER PRIMARY KEY REFERENCES stock_movements(id),
+  order_id INTEGER NOT NULL REFERENCES orders(id)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS issues_by_order ON repair_stock_issues(order_id);
+
+CREATE VIEW IF NOT EXISTS order_part_usage AS
+  SELECT s.id AS movement_id, w.order_id, s.part_id, -s.quantity AS quantity
+  FROM work_reports w JOIN stock_movements s ON s.report_id=w.id WHERE s.quantity < 0
+  UNION ALL
+  SELECT s.id, i.order_id, s.part_id, -s.quantity
+  FROM repair_stock_issues i JOIN stock_movements s ON s.id=i.movement_id WHERE s.quantity < 0;
+
 CREATE TABLE IF NOT EXISTS payments (
   id INTEGER PRIMARY KEY,
   order_id INTEGER NOT NULL REFERENCES orders(id),

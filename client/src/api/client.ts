@@ -26,6 +26,8 @@ export const selectProfile = (profile: Profile) => api('session', { profile })
 export const getRequest = (id: number) => api<RequestDetail>('requests/' + id)
 export const createRequest = (data: Submission) => api<RequestDetail>('requests', data)
 export const restock = (data: Submission) => api('stock', data)
+export const orderSupply = (data: Submission) => api('supplies', data)
+export const receiveSupply = (id: number, data: Submission) => api(`supplies/${id}/receive`, data)
 export const updateRequest = (id: number, action: RequestAction, data: Submission) =>
   api<RequestDetail>(`requests/${id}/${action}`, data)
 

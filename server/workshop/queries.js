@@ -1,10 +1,10 @@
 import { availableActions, routingActions } from './rules.js';
 import { requireValue } from './validation.js';
 
-export function createWorkshopQueries({ all, get }) {
+export function createWorkshopQueries({ all, get }, inventory) {
   const requestSelect = `SELECT r.id, r.vehicle_id, r.description, r.priority, r.preferred_date, r.appointment,
     r.status AS request_status, r.created_at, v.model, v.plate, v.vin, v.mileage, v.client_id,
-    c.name AS client_name, c.phone AS client_phone, o.id AS order_id,
+    c.name AS client_name, c.phone AS client_phone, o.id AS order_id, o.status AS work_status,
     CASE WHEN p.space_id IS NOT NULL THEN 'waiting_parts' ELSE COALESCE(o.status,r.status) END AS status,
     p.space_id AS parking_space, p.reason AS parking_reason, p.expected_date AS parts_expected_date,
     o.mechanic_id, m.name AS mechanic_name, o.bay_id, b.name AS bay_name, o.work_instructions,
@@ -65,14 +65,17 @@ export function createWorkshopQueries({ all, get }) {
       (SELECT group_concat(p.name || ' × ' || -s.quantity, ', ') FROM stock_movements s
        JOIN parts p ON p.id=s.part_id WHERE s.report_id=w.id) AS parts
       FROM work_reports w JOIN accounts a ON a.id=w.mechanic_id WHERE w.order_id=? ORDER BY w.id DESC`, row.order_id);
+    const stockUsage = row.order_id && user.role !== 'client' ? all(
+      `SELECT u.part_id,p.name,SUM(u.quantity) AS quantity FROM order_part_usage u
+      JOIN parts p ON p.id=u.part_id WHERE u.order_id=? GROUP BY u.part_id,p.name ORDER BY p.name`, row.order_id,
+    ) : [];
     const partsRemaining = {};
     if (user.role === 'mechanic' && row.order_id) {
       for (const { part_id: id, quantity } of money.estimate) {
         if (id) partsRemaining[id] = (partsRemaining[id] || 0) + quantity;
       }
-      for (const item of all(`SELECT s.part_id, SUM(s.quantity) AS quantity FROM stock_movements s
-        JOIN work_reports w ON w.id=s.report_id WHERE w.order_id=? GROUP BY s.part_id`, row.order_id)) {
-        if (Object.hasOwn(partsRemaining, item.part_id)) partsRemaining[item.part_id] += item.quantity;
+      for (const item of stockUsage) {
+        if (Object.hasOwn(partsRemaining, item.part_id)) partsRemaining[item.part_id] -= item.quantity;
       }
     }
     return {
@@ -86,7 +89,7 @@ export function createWorkshopQueries({ all, get }) {
       visit_note: row.status === 'scheduled' ? history.find(event => event.title === 'Назначен визит')?.note ?? null : null,
       estimate_version: row.estimate_version, actions: availableActions(user, { ...row, ...money }),
       ...(user.role === 'client' ? {} : { order_id: row.order_id, bay_name: row.bay_name, work_instructions: row.work_instructions,
-        pause_reason: row.pause_reason, intake_note: row.intake_note, inspection_note: row.inspection_note }),
+        pause_reason: row.pause_reason, intake_note: row.intake_note, inspection_note: row.inspection_note, stock_usage: stockUsage }),
       ...(user.role === 'advisor' ? { client_phone: row.client_phone, vin: row.vin, mechanic_id: row.mechanic_id,
         tracking_token: get('SELECT token FROM request_tracking WHERE request_id=?', id)?.token } : {}),
     };
@@ -120,8 +123,8 @@ export function createWorkshopQueries({ all, get }) {
         result.vehicles = all('SELECT id, client_id, model, plate, mileage FROM vehicles ORDER BY model,id');
         result.mechanics = all("SELECT id, name FROM accounts WHERE role='mechanic' ORDER BY id");
         result.services = all('SELECT * FROM services ORDER BY id');
-        result.movements = all(`SELECT s.quantity, s.note, s.created_at, p.name, a.name AS employee FROM stock_movements s
-          JOIN parts p ON p.id=s.part_id JOIN accounts a ON a.id=s.account_id ORDER BY s.id DESC LIMIT 25`);
+        result.movements = inventory.movements();
+        result.supplies = inventory.supplies();
       }
       if (user.role === 'mechanic') {
         result.parts = all(`SELECT DISTINCT p.id, p.name, p.stock FROM parts p

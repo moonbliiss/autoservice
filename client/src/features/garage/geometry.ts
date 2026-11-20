@@ -1,4 +1,4 @@
-import { garagePosts, parkingDepth, parkingLocations, parkingWidth } from './mapLayout';
+import { garagePosts, parkingDepth, parkingLocations, parkingWidth, warehouse } from './mapLayout';
 
 export type Point = [number, number, number];
 export interface Face { points: Point[]; color: string; stroke: string | null; center: Point }
@@ -194,8 +194,56 @@ function makeParking() {
   }
 }
 
+function makeWarehouse() {
+  const { left, right, back, front } = warehouse;
+  box(ground, left, -.63, back, right - left, .58, front - back, '#5c665f');
+  flat(ground, left + .04, -.04, back + .04, right - left - .08, front - back - .08, '#a6b3a5');
+  flat(ground, 11.3, -.03, front - .7, 10, .44, '#c0caac');
+  box(fixtures, left, 0, back, right - left, 2.8, .25, '#d6dcc9');
+  box(fixtures, left, 0, back + .25, .22, 2.8, 3.3, '#c4cebb');
+  box(fixtures, left, 1.1, back + .25, right - left, .12, .045, '#769786');
+
+  for (const x of [11.28, 14.68]) {
+    const z = -11.32;
+    const width = 2.87;
+    for (const dx of [0, width - .10]) {
+      for (const dz of [0, .95]) box(fixtures, x + dx, 0, z + dz, .10, 2.16, .10, '#507364');
+    }
+    for (const height of [.25, .91, 1.57]) {
+      box(fixtures, x, height, z, width, .09, 1.06, '#607a6c');
+      box(fixtures, x + .21, height + .09, z + .15, .73, .48, .7, '#b78b55');
+      box(fixtures, x + 1.10, height + .09, z + .16, .58, .42, .66, '#95a685');
+      box(fixtures, x + 1.94, height + .09, z + .19, .61, .43, .63, '#c7a976');
+    }
+  }
+
+  // Stockkeeper's desk, screen and chair face the open side of the warehouse.
+  box(fixtures, 18.15, .88, -8.48, 2.72, .12, 1.31, '#c7a579');
+  box(fixtures, 18.24, 0, -8.36, .15, .88, 1.05, '#64746a');
+  box(fixtures, 20.54, 0, -8.36, .19, .88, 1.05, '#64746a');
+  box(fixtures, 19.66, 1, -7.68, .62, .055, .41, '#404f46');
+  box(fixtures, 19.89, 1.055, -7.55, .13, .29, .11, '#404f46');
+  box(fixtures, 19.54, 1.31, -7.57, .83, .53, .10, '#3b4e45');
+  box(fixtures, 19.59, 1.36, -7.46, .73, .42, .018, '#8eb9ab');
+  box(fixtures, 19.62, 1.0, -8.01, .65, .043, .18, '#405448');
+  box(fixtures, 18.53, 1.0, -7.8, .43, .057, .53, '#e9dfc3');
+
+  box(fixtures, 18.72, .38, -9.43, .79, .12, .72, '#40534a');
+  box(fixtures, 18.72, .5, -9.47, .79, .8, .13, '#465c50');
+  box(fixtures, 19.05, .07, -9.13, .14, .32, .14, '#494e4a');
+  box(fixtures, 18.89, .49, -9.13, .48, .76, .55, '#476e5b');
+  box(fixtures, 18.83, .96, -8.95, .16, .17, .57, '#486d5a');
+  box(fixtures, 19.31, .96, -8.95, .16, .17, .66, '#486d5a');
+  box(fixtures, 18.85, .98, -8.38, .13, .11, .17, '#be916e');
+  box(fixtures, 19.32, .98, -8.29, .13, .11, .17, '#be916e');
+  cylinder(fixtures, 19.14, 1.18, -8.88, .11, .18, '#ca9d79', 'y');
+  cylinder(fixtures, 19.14, 1.32, -8.88, .23, .39, '#ca9d79', 'y');
+  cylinder(fixtures, 19.14, 1.62, -8.9, .245, .12, '#43453a', 'y');
+}
+
 makeBuilding();
 makeParking();
+makeWarehouse();
 
 export const lifts = garagePosts.map(post => {
   const arms: Face[] = [];

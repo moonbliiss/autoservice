@@ -200,3 +200,91 @@ test('пауза освобождает механика, а прежняя ма
   assert.equal(workshop.details(mechanic, original.id).resume_blocked, false);
   assert.equal(workshop.action(mechanic, original.id, 'resume', {}).status, 'repairing');
 });
+
+test('детали проходят через заказ поставщику, склад и выдачу в ремонт без повторного списания', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const mechanic = workshop.profile('mechanic');
+  const client = workshop.profile('client');
+  const request = workshop.dashboard(advisor).requests.find(row => row.status === 'new');
+  const current = workshop.dashboard(mechanic).requests.find(row => row.status === 'diagnosing');
+  const step = (user, key, data = {}) => workshop.action(user, request.id, key, data);
+  const stock = id => workshop.dashboard(advisor).parts.find(part => part.id === id).stock;
+
+  workshop.action(mechanic, current.id, 'diagnosisReport', { result: 'Проверка завершена', minutes: 7 });
+  step(advisor, 'receive', { mileage: 63000 });
+  const order = { part_id: 'new', sku: 'TEST-BP', name: 'Колодки для заказа', price: 4200,
+    request_id: request.id, supplier: 'Поставщик', quantity: 3, expected_date: '2027-06-18' };
+  assert.throws(() => workshop.orderSupply(mechanic, order), { status: 403 });
+  const supplyId = workshop.orderSupply(advisor, order).id;
+  const padsId = workshop.dashboard(advisor).supplies[0].part_id;
+  assert.equal(stock(padsId), 0);
+  assert.equal(workshop.dashboard(advisor).movements.length, 0);
+  step(advisor, 'estimate', { version: 0, lines: [
+    { kind: 'part', catalog_id: 1, quantity: 4, price: 900 },
+    { kind: 'part', catalog_id: padsId, quantity: 1, price: 4200 },
+  ] });
+  step(client, 'approve', { version: 1 });
+  const assignment = { bay_id: 3, mechanic_id: mechanic.id, instructions: 'Заменить масло и колодки' };
+  step(advisor, 'assign', assignment);
+  step(mechanic, 'startRepair');
+
+  const oilBefore = stock(1);
+  const oil = { id: 1, quantity: 4 };
+  const pads = { id: padsId, quantity: 1 };
+  assert.throws(() => step(mechanic, 'issueParts', { parts: [oil, pads] }), { status: 409 });
+  assert.equal(stock(1), oilBefore);
+  assert.equal(workshop.dashboard(advisor).movements.length, 0);
+  assert.equal(step(mechanic, 'issueParts', { parts: [oil] }).parts_remaining[1], 0);
+  assert.equal(stock(1), oilBefore - 4);
+
+  const parked = step(advisor, 'park', { parking_space: 4 });
+  assert.equal(parked.status, 'waiting_parts');
+  assert.equal(parked.parking_space, 4);
+  assert.equal(parked.parts_expected_date, '2027-06-18');
+  assert.match(workshop.details(client, request.id).parking_reason, /Ожидаются запчасти/);
+
+  assert.throws(() => workshop.receiveSupply(mechanic, supplyId, { quantity: 1 }), { status: 403 });
+  workshop.receiveSupply(advisor, supplyId, { quantity: 1, note: 'Накладная 17' });
+  assert.equal(stock(padsId), 1);
+  assert.equal(workshop.dashboard(advisor).supplies[0].received, 1);
+  assert.throws(() => workshop.receiveSupply(advisor, supplyId, { quantity: 3 }), { status: 409 });
+  assert.equal(stock(padsId), 1);
+
+  step(advisor, 'assign', assignment);
+  step(mechanic, 'startRepair');
+  assert.throws(() => step(mechanic, 'repairReport', { result: 'Ремонт завершён', minutes: 30, parts: [oil, pads] }),
+    /превышает согласованное/);
+  assert.equal(stock(padsId), 1);
+  const done = step(mechanic, 'repairReport', { result: 'Ремонт завершён', minutes: 30, parts: [pads] });
+  assert.equal(done.status, 'inspection');
+  assert.equal(stock(padsId), 0);
+  assert.equal(stock(1), oilBefore - 4);
+  assert.equal(done.stock_usage.length, 2);
+  workshop.receiveSupply(advisor, supplyId, { quantity: 2 });
+  assert.equal(workshop.dashboard(advisor).supplies[0].received, 3);
+  assert.throws(() => workshop.receiveSupply(advisor, supplyId, { quantity: 1 }), { status: 409 });
+  assert.equal(stock(padsId), 2);
+  const moves = workshop.dashboard(advisor).movements;
+  assert.deepEqual(moves.map(move => move.quantity), [2, -1, 1, -4]);
+  assert.equal(moves.filter(move => move.supply_id === supplyId).length, 2);
+  assert.ok(moves.every(move => move.request_id === request.id));
+});
+
+test('машина переезжает на парковку из диагностики и возвращается к той же стадии', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const mechanic = workshop.profile('mechanic');
+  const request = workshop.dashboard(mechanic).requests.find(row => row.status === 'diagnosing');
+  assert.ok(workshop.dashboard(advisor).requests.find(row => row.id === request.id).routing_actions.includes('park'));
+  const parked = workshop.action(advisor, request.id, 'park', { parking_space: 6 });
+  assert.equal(parked.status, 'waiting_parts');
+  assert.equal(parked.bay_id, null);
+  const returned = workshop.action(advisor, request.id, 'assign', {
+    bay_id: 1, mechanic_id: mechanic.id, instructions: 'Продолжить диагностику',
+  });
+  assert.equal(returned.status, 'diagnosis_assigned');
+  assert.equal(returned.parking_space, null);
+});

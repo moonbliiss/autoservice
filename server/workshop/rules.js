@@ -11,10 +11,11 @@ export const transitions = {
   recordDecision: ['advisor', ['awaiting_approval'], 'Приёмщик зафиксировал ответ клиента'],
   assign: ['advisor', ['approved', 'repair_assigned', 'paused', 'waiting_parts'], 'Назначены работы'],
   moveBay: ['advisor', ['diagnosing', 'repairing', 'inspection'], 'Изменён пост или исполнитель'],
-  park: ['advisor', ['approved', 'repair_assigned', 'repairing', 'paused', 'waiting_parts'], 'Автомобиль на парковке · ожидание запчастей'],
+  park: ['advisor', ['diagnosis_assigned', 'diagnosing', 'approved', 'repair_assigned', 'repairing', 'paused', 'inspection', 'waiting_parts'], 'Автомобиль на парковке · ожидание запчастей'],
   startRepair: ['mechanic', ['repair_assigned'], 'Ремонт начат'],
   pause: ['mechanic', ['repairing'], 'Ремонт приостановлен'],
   resume: ['mechanic', ['paused'], 'Ремонт возобновлён'],
+  issueParts: ['mechanic', ['repairing'], 'Запчасти выданы со склада'],
   repairReport: ['mechanic', ['repairing'], 'Работы переданы на проверку'],
   rework: ['advisor', ['inspection'], 'Назначена доработка'],
   ready: ['advisor', ['inspection'], 'Автомобиль готов к выдаче'],
@@ -29,6 +30,7 @@ export function availableActions(user, row) {
   return Object.entries(transitions).filter(([key, [roles, states]]) => {
     if (!roles.split(' ').includes(user.role) || !states.includes(row.status)) return false;
     if (key === 'payment') return row.total > row.paid;
+    if (key === 'issueParts') return row.estimate.some(line => line.part_id);
     if (key === 'release') return Boolean(row.bay_id);
     if (key === 'resume') return Boolean(row.bay_id) && !row.mechanic_busy;
     return key !== 'issue' || row.total === row.paid;
