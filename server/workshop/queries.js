@@ -16,6 +16,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     t.id AS transfer_id,t.bay_id AS transfer_bay_id,tb.name AS transfer_bay_name,t.mechanic_id AS transfer_mechanic_id,
     tm.name AS transfer_mechanic_name,t.instructions AS transfer_instructions,
     p.space_id AS parking_space, p.reason AS parking_reason, p.expected_date AS parts_expected_date,
+    arrival.space_id AS arrival_space,
     o.mechanic_id, m.name AS mechanic_name, o.bay_id, b.name AS bay_name, o.work_instructions,
     o.pause_reason, o.eta, o.estimate_version, o.inspection_note, o.intake_note,
     (EXISTS(SELECT 1 FROM orders active WHERE active.mechanic_id=o.mechanic_id
@@ -25,7 +26,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     LEFT JOIN orders o ON o.request_id=r.id LEFT JOIN accounts m ON m.id=o.mechanic_id
     LEFT JOIN bays b ON b.id=o.bay_id LEFT JOIN parking_assignments p ON p.order_id=o.id
     LEFT JOIN parking_transfers t ON t.order_id=o.id LEFT JOIN bays tb ON tb.id=t.bay_id
-    LEFT JOIN accounts tm ON tm.id=t.mechanic_id`;
+    LEFT JOIN accounts tm ON tm.id=t.mechanic_id LEFT JOIN arrival_parking arrival ON arrival.request_id=r.id`;
 
   function getRequest(id) {
     return get(requestSelect + ' WHERE r.id=?', id);
@@ -77,6 +78,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     const past = mechanic && !assigned;
     return { id, model, plate, status, priority, appointment: mechanic ? null : appointment, created_at,
       eta: past ? null : eta, parking_space: past ? null : parking_space,
+      ...(!mechanic ? { arrival_space: row.arrival_space } : {}),
       ...(user.role !== 'client' ? { bay_id: past ? null : bay_id } : {}),
       ...(mechanic ? { assigned_to_me: assigned } : {}),
       ...((fullRequestAccess(user.role) || assigned) && ['diagnosing', 'repairing', 'paused'].includes(status)
@@ -148,11 +150,11 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
     const record = get('SELECT request_id FROM request_tracking WHERE token=?', token);
     requireValue(record, 'Заявка не найдена.', 404);
     const row = getRequest(record.request_id);
-    const { id, model, plate, status, appointment, eta, parking_space, parking_reason, parts_expected_date, description } = row;
+    const { id, model, plate, status, appointment, eta, parking_space, arrival_space, parking_reason, parts_expected_date, description } = row;
     const history = all(`SELECT title,note,created_at FROM history WHERE request_id=? AND is_public=1 ORDER BY id DESC`, id);
     const visitNote = status === 'scheduled' ? history.find(item => item.title === 'Назначен визит')?.note ?? null : null;
     const { work_orders, payments, paid, total } = amounts(row);
-    return { id, model, plate, status, appointment, eta, parking_space, parking_reason, parts_expected_date, description,
+    return { id, model, plate, status, appointment, eta, parking_space, arrival_space, parking_reason, parts_expected_date, description,
       history, work_orders: work_orders.map(document => ({
         ...document, lines: document.lines.map(({ name, quantity, unit_price }) => ({ name, quantity, unit_price })),
       })), payments, paid, total, visit_note: visitNote };

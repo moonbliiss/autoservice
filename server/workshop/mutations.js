@@ -43,7 +43,8 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
         vehicleId, description, preferred).lastInsertRowid;
       if (advisor) run('INSERT INTO request_tracking(request_id,token) VALUES (?,?)', id, randomBytes(24).toString('hex'));
       addHistory(id, user, advisor ? 'Заявка оформлена приёмщиком' : 'Заявка отправлена',
-        advisor && input.accept_now === 'yes' ? null : 'Мастер-приёмщик уточнит время визита.');
+        advisor && (input.accept_now === 'yes' || input.arrival_space != null) ? null : 'Мастер-приёмщик уточнит время визита.');
+      if (advisor && input.arrival_space != null) action(user, id, 'arrivalPark', input);
       if (advisor && input.accept_now === 'yes') return action(user, id, 'receive', input);
       return details(user, id);
     });
@@ -77,6 +78,7 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
       work_instructions: str(input.instructions, 'Задача и ожидаемый результат'), pause_reason: null });
     workTime.stop(row.order_id);
     if (row.parking_space) run('DELETE FROM parking_assignments WHERE order_id=?', row.order_id);
+    if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', row.id);
     return `Пост ${bayId} · ${bayName}.`;
   }
 
@@ -103,6 +105,7 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
       ON CONFLICT(order_id) DO UPDATE SET space_id=excluded.space_id, reason=excluded.reason, expected_date=excluded.expected_date`,
     row.order_id, space, reason, expected);
     run('UPDATE orders SET bay_id=NULL WHERE id=?', row.order_id);
+    if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', row.id);
     workTime.stop(row.order_id);
     return `Место ${space}. ${reason}${expected ? ` · Ожидаемая поставка: ${expected}` : ''}`;
   }
@@ -174,7 +177,27 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
         case 'cancel':
           note = str(input.note, 'Причина отмены', { optional: true });
           run("UPDATE service_requests SET status='cancelled' WHERE id=?", id);
+          if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', id);
           break;
+        case 'arrivalPark': {
+          const space = integer(input.arrival_space, 'Место на клиентской стоянке', 1, 5);
+          requireValue(!get('SELECT 1 FROM arrival_parking WHERE space_id=? AND request_id<>?', space, id),
+            'Это место на клиентской стоянке уже занято.', 409);
+          requireValue(!get(`SELECT 1 FROM service_requests r LEFT JOIN arrival_parking p ON p.request_id=r.id
+            LEFT JOIN orders o ON o.request_id=r.id LEFT JOIN parking_assignments s ON s.order_id=o.id
+            WHERE r.vehicle_id=? AND r.id<>? AND (p.space_id IS NOT NULL OR o.bay_id IS NOT NULL OR s.space_id IS NOT NULL)`, row.vehicle_id, id),
+          'Автомобиль уже размещён на карте по другой заявке.', 409);
+          run(`DELETE FROM arrival_parking WHERE request_id=?`, id);
+          run('INSERT INTO arrival_parking(space_id,request_id) VALUES (?,?)', space, id);
+          note = `Место ${space}.`;
+          break;
+        }
+        case 'leaveArrival': {
+          const expected = input.arrival_space == null ? row.arrival_space : integer(input.arrival_space, 'Место на клиентской стоянке', 1, 5);
+          requireValue(expected === row.arrival_space, 'Место автомобиля изменилось. Обновите карту.', 409);
+          run('DELETE FROM arrival_parking WHERE request_id=?', id);
+          break;
+        }
         case 'receive': {
           const mileage = integer(input.mileage, 'Пробег', 0, 5_000_000);
           const priority = input.priority === 'urgent' ? 'urgent' : 'normal';
@@ -301,6 +324,7 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
         case 'returnCar':
           note = str(input.note, 'Причина возврата');
           updateOrder(row, 'ready', { bay_id: null });
+          if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', id);
           break;
         case 'payment': {
           const amount = integer(input.amount, 'Сумма', 1, money.total - money.paid);

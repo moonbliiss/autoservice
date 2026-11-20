@@ -25,6 +25,7 @@ export const actionLabels = {
   recordDecision: 'Зафиксировать ответ клиента', moveBay: 'Переназначить пост или механика', park: 'Перевести на парковку',
   dispatchTransfer: 'Назначить перегон в цех', cancelTransfer: 'Отменить перегон', completeTransfer: 'Машина на посту',
   classifyLine: 'Уточнить тип позиции заказ-наряда',
+  arrivalPark: 'Указать место на клиентской стоянке', leaveArrival: 'Освободить место на стоянке',
   warehouseIssue: 'Выдать запчасть', orderSupply: 'Заказать запчасть', receiveSupply: 'Принять поставку',
 } satisfies Record<RequestAction | 'newRequest' | 'restock' | 'orderSupply' | 'receiveSupply' | 'warehouseIssue', string>
 

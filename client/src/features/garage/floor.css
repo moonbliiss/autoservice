@@ -1,22 +1,32 @@
-.map-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, 22%);
-  gap: 13px;
-  margin-bottom: 14px;
+.workshop-map { min-width: 0; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 13px; overflow: hidden; }
+.workshop-map-main { display: flex; flex: 1; flex-direction: column; margin-bottom: 0; border: 0; border-radius: 0; }
+.workshop-map-main .scene { flex: 1; height: auto; min-height: 420px; }
+.map-toolbar { position: absolute; z-index: 2; top: 19px; left: 20px; display: grid; justify-items: start; gap: 10px; }
+.map-toolbar h1 { font-size: clamp(1.35rem, 3vw, 2.2rem); }
+.map-toolbar-actions, .map-legend { display: flex; flex-wrap: wrap; gap: 7px; }
+.map-legend { font-size: .8rem; }
+.map-legend span { display: inline-flex; align-items: center; gap: 5px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; }
+.map-legend i { width: 9px; height: 9px; border-radius: 2px; background: #828981; }
+.map-legend .arrival-key { background: #7295a2; }
+.map-popover { position: absolute; z-index: 3; top: 16px; right: 16px; width: min(345px, calc(100% - 32px)); max-height: calc(100% - 74px); overflow: auto; display: grid; gap: 10px; justify-items: start; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: 0 6px 22px #28362b26; }
+.map-popover-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; width: 100%; }
+.map-popover-head h2 { font-size: 1.08rem; }
+.map-popover-head button { display: grid; place-items: center; flex: 0 0 31px; height: 31px; padding: 0; margin: -5px -5px 0 0; border: 0; border-radius: 6px; color: var(--muted); background: #eff1ea; font-size: 1.2rem; }
+.map-car, .arrival-form { display: grid; justify-items: start; gap: 5px; width: 100%; }
+.arrival-form select { width: 100%; min-width: 0; }
+.map-routing-hint { padding: 6px 8px; background: #eaf1e6; border-radius: 6px; font-size: .88rem; }
+.map-queue { display: grid; gap: 12px; width: 100%; }
+.map-queue section { display: grid; gap: 3px; }
+.map-queue section + section { padding-top: 8px; border-top: 1px solid var(--line); }
+.map-queue button { width: 100%; padding: 5px 0; }
+@media (max-width: 900px) {
+  .workshop-map-main .map-popover { top: auto; bottom: 55px; max-height: min(290px, calc(100% - 170px)); }
 }
-.map-panel { overflow: hidden; }
-.map-selection { display: grid; justify-items: start; gap: 12px; padding: 0 14px 15px; }
-.map-request {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-  width: 100%;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8faf5;
-  color: var(--ink);
-  text-align: left;
+@media (max-width: 460px) {
+  .map-toolbar { top: 12px; left: 10px; right: 10px; gap: 6px; }
+  .map-toolbar h1 { padding-right: 110px; }
+  .map-toolbar-actions button { min-height: 34px; padding: 5px 8px; font-size: .83rem; }
+  .map-legend span { padding: 2px 5px; }
+  .map-popover { top: auto; bottom: 10px; max-height: min(225px, calc(100% - 60px)); }
+  .workshop-map-main .map-popover { bottom: 10px; max-height: min(245px, calc(100% - 137px)); }
 }
-.map-request:hover { background: #eaf0e6; }
-@media (max-width: 800px) { .map-grid { grid-template-columns: 1fr; } }

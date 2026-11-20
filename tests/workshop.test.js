@@ -136,7 +136,7 @@ test('приёмщик оформляет очный визит, распред�
   assert.match(order.tracking_token, /^[a-f0-9]{48}$/);
   assert.throws(() => workshop.tracking('0'.repeat(48)), { status: 404 });
   assert.deepEqual(Object.keys(workshop.tracking(order.tracking_token)).sort(),
-    ['appointment', 'description', 'eta', 'history', 'id', 'model', 'paid',
+    ['appointment', 'arrival_space', 'description', 'eta', 'history', 'id', 'model', 'paid',
       'parking_reason', 'parking_space', 'parts_expected_date', 'payments', 'plate', 'status', 'total', 'visit_note', 'work_orders']);
 
   const assign = (bay_id, instructions) => ({ bay_id, mechanic_id: mechanic.id, instructions });
@@ -513,4 +513,40 @@ test('время работ измеряется автоматически и �
   assert.equal(reported.reports[0].elapsed_ms, 166_000);
   assert.equal(reported.reports[0].minutes, 3);
   assert.equal(workshop.details(advisor, 2).work_totals[0].elapsed_ms, 166_000);
+});
+
+test('клиентская стоянка отмечает приезд и освобождается после назначения на пост', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const client = workshop.profile('client');
+  const mechanic = workshop.profile('mechanic');
+  const move = (id, space) => workshop.action(advisor, id, 'arrivalPark', { arrival_space: space });
+  assert.throws(() => move(3, 6), { status: 400 });
+  assert.throws(() => workshop.action(client, 3, 'arrivalPark', { arrival_space: 5 }), { status: 409 });
+  assert.equal(move(3, 5).arrival_space, 5);
+  assert.equal(workshop.details(client, 3).status, 'new');
+  assert.equal(workshop.details(client, 3).arrival_space, 5);
+  assert.equal(workshop.details(advisor, 3).parking_space, null);
+  const visitor = {
+    client_name: 'Новый клиент', client_phone: '89000000000', model: 'Ford Focus', plate: 'Х155ХХ55',
+    description: 'Проверить тормоза', arrival_space: 5,
+  };
+  assert.throws(() => workshop.createRequest(advisor, visitor), { status: 409 });
+  assert.ok(!workshop.dashboard(advisor).clients.some(item => item.name === visitor.client_name));
+  const created = workshop.createRequest(advisor, { ...visitor, arrival_space: 4 });
+  assert.equal(workshop.tracking(created.tracking_token).arrival_space, 4);
+  assert.throws(() => move(created.id, 5), { status: 409 });
+  assert.equal(workshop.action(advisor, 3, 'receive', { mileage: 62500 }).arrival_space, 5);
+  workshop.action(mechanic, 1, 'diagnosisReport', { result: 'Диагностика завершена' });
+  const assigned = workshop.action(advisor, 3, 'diagnose', {
+    mechanic_id: mechanic.id, bay_id: 1, instructions: 'Начать проверку',
+  });
+  assert.equal(assigned.arrival_space, null);
+  assert.throws(() => move(3, 2), { status: 409 });
+  assert.equal(move(created.id, 5).arrival_space, 5);
+  assert.throws(() => workshop.action(advisor, created.id, 'leaveArrival', { arrival_space: 4 }), { status: 409 });
+  assert.equal(workshop.action(advisor, created.id, 'leaveArrival', { arrival_space: 5 }).arrival_space, null);
+  move(created.id, 4);
+  assert.equal(workshop.action(advisor, created.id, 'cancel', {}).arrival_space, null);
 });

@@ -19,14 +19,15 @@ const between = (a: Position, b: Position, t: number) => ({ x: mix(a.x, b.x, t),
 const ease = (t: number) => t * t * (3 - 2 * t)
 const clamp = (t: number) => Math.max(0, Math.min(1, t))
 const angle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t
+const aisle = (place: SceneLocation) => place.kind === 'parking' ? parkingAisle : workshopAisle
 
 export const restPose = (place: SceneLocation): VehiclePose => ({ ...place, lift: place.kind === 'bay' ? .67 : 0 })
 
 function travelPath(from: SceneLocation, to: SceneLocation) {
-  const fromAisle = from.kind === 'bay' ? workshopAisle : parkingAisle
-  const toAisle = to.kind === 'bay' ? workshopAisle : parkingAisle
+  const fromAisle = aisle(from)
+  const toAisle = aisle(to)
   const waypoints = [from, { x: from.x, z: fromAisle }]
-  if (from.kind !== to.kind) waypoints.push(
+  if (fromAisle !== toAisle) waypoints.push(
     { x: parkingEntrance, z: fromAisle }, { x: parkingEntrance, z: toAisle },
   )
   waypoints.push({ x: to.x, z: toAisle }, to)
@@ -79,11 +80,11 @@ export function motionPose(motion: VehicleMotion, now: number): VehiclePose {
   const behind = positionAt(motion, travelled - .32)
   const heading = Math.atan2(ahead.x - behind.x, ahead.z - behind.z)
   const position = positionAt(motion, travelled)
-  const fromTurn = (from.kind === 'bay' ? workshopAisle : Math.abs(from.z - parkingAisle)) + .85
-  const toTurn = (to.kind === 'bay' ? workshopAisle : Math.abs(to.z - parkingAisle)) + .85
+  const fromTurn = Math.abs(from.z - aisle(from)) + .85
+  const toTurn = Math.abs(to.z - aisle(to)) + .85
   let yaw = heading
-  if (from.kind === 'parking') yaw = angle(from.yaw, yaw, ease(clamp((travelled - fromTurn + 1.65) / 1.65)))
+  if (from.kind !== 'bay') yaw = angle(from.yaw, yaw, ease(clamp((travelled - fromTurn + 1.65) / 1.65)))
   if (to.kind === 'bay') yaw = angle(to.yaw, yaw, ease(clamp((length - travelled - toTurn + 1.65) / 1.65)))
-  if (to.kind === 'parking') yaw = angle(to.yaw, yaw, ease(clamp((length - travelled) / 1.55)))
+  if (to.kind !== 'bay') yaw = angle(to.yaw, yaw, ease(clamp((length - travelled) / 1.55)))
   return { ...position, lift: 0, yaw }
 }

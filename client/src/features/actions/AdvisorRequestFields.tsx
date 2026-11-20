@@ -2,14 +2,15 @@ import { useState } from 'react'
 import type { Dashboard } from '../../api/types'
 import { Field, SelectField, TextField, type Option } from './fields'
 
-export function AdvisorRequestFields({ clients = [], vehicles = [] }: Pick<Dashboard, 'clients' | 'vehicles'>) {
+export function AdvisorRequestFields({ clients = [], vehicles = [], arrivalSpace }: Pick<Dashboard, 'clients' | 'vehicles'> & { arrivalSpace?: number }) {
   const [clientId, setClientId] = useState('')
   const [vehicleId, setVehicleId] = useState('')
-  const [acceptNow, setAcceptNow] = useState(true)
+  const [acceptNow, setAcceptNow] = useState(!arrivalSpace)
   const clientVehicles = vehicles.filter(vehicle => String(vehicle.client_id) === clientId)
   const vehicle = clientVehicles.find(item => String(item.id) === vehicleId)
 
   return <>
+    {arrivalSpace && <p>Клиентская стоянка · место {arrivalSpace}<input type="hidden" name="arrival_space" value={arrivalSpace} /></p>}
     <SelectField label="Клиент" name="client_id" value={clientId} onChange={value => {
       setClientId(value)
       setVehicleId('')
@@ -31,7 +32,7 @@ export function AdvisorRequestFields({ clients = [], vehicles = [] }: Pick<Dashb
     </>}
     <TextField label="Что нужно проверить или сделать?" name="description" />
     <label className="check-field"><input type="checkbox" name="accept_now" value="yes" checked={acceptNow}
-      onChange={event => setAcceptNow(event.target.checked)} /> Автомобиль уже в сервисе</label>
+      onChange={event => setAcceptNow(event.target.checked)} /> {arrivalSpace ? 'Принять автомобиль сейчас' : 'Автомобиль уже в сервисе'}</label>
     {acceptNow ? <>
       <div className="fields-row">
         <Field key={vehicleId} label="Пробег, км" name="mileage" type="number" defaultValue={vehicle?.mileage ?? ''} min={0} max={5000000} />

@@ -37,7 +37,8 @@ function TrackingDetails({ request }: { request: RequestTracking }) {
     <Heading title={request.model} subtitle={`${request.plate} · Заявка ${code(request.id)}`}
       eyebrow="МАСТЕРСКАЯ · СТАТУС ОБСЛУЖИВАНИЯ" action={<StatusTag status={request.status} />} />
     <div className="column">
-      <Panel inset title="Что происходит"><p>{nextSteps[request.status]}</p></Panel>
+      <Panel inset title="Что происходит"><p>{request.arrival_space && ['new', 'scheduled'].includes(request.status)
+        ? 'Приезд отмечен. Обратитесь к приёмщику для оформления автомобиля.' : nextSteps[request.status]}</p></Panel>
       {request.status !== 'awaiting_approval' && request.work_orders.some(document => document.status === 'pending')
         && <Panel inset title="Требуется ваше решение"><p>Проверьте заказ-наряды на согласовании и сообщите решение приёмщику.</p></Panel>}
       <div className="tracking-grid">

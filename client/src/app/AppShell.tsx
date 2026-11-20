@@ -4,8 +4,9 @@ import { roleLabels } from '../shared/labels'
 import { navigation, profileKey, profiles, type Section } from './navigation'
 import './shell.css'
 
-export function AppShell({ user, section, busy, submitting, notice, navigate, changeProfile, children }: {
+export function AppShell({ user, section, busy, submitting, notice, navigate, changeProfile, children, mapOverview }: {
   user?: Dashboard['user']; section: Section; busy: boolean; submitting: boolean;
+  mapOverview: boolean;
   notice: { message: string; error: boolean } | null; navigate: (section: Section) => void;
   changeProfile: (profile: Profile) => Promise<void>; children: ReactNode
 }) {
@@ -39,7 +40,7 @@ export function AppShell({ user, section, busy, submitting, notice, navigate, ch
         </label>
       </header>
       <p id="notice" className={notice?.error ? 'notice error' : 'notice'} role="status" hidden={!notice}>{notice?.message}</p>
-      <main id="content" aria-busy={busy}>{children}</main>
+      <main id="content" className={mapOverview ? 'map-overview' : undefined} aria-busy={busy}>{children}</main>
     </div>
   </div>
 }

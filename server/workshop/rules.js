@@ -5,6 +5,8 @@ export const transitions = {
   schedule: ['advisor', ['new', 'scheduled'], 'Назначен визит'],
   cancel: ['advisor client', ['new', 'scheduled'], 'Заявка отменена'],
   receive: ['advisor', ['scheduled', 'new'], 'Автомобиль принят'],
+  arrivalPark: ['advisor', ['new', 'scheduled', 'received', 'awaiting_approval', 'approved', 'declined'], 'Автомобиль на клиентской стоянке'],
+  leaveArrival: ['advisor', ['new', 'scheduled', 'received', 'awaiting_approval', 'approved', 'declined'], 'Освобождено место на клиентской стоянке'],
   diagnose: ['advisor', ['received', 'diagnosis_assigned'], 'Назначена диагностика'],
   startDiagnosis: ['mechanic', ['diagnosis_assigned'], 'Диагностика начата'],
   diagnosisReport: ['mechanic', ['diagnosing'], 'Диагностика завершена'],
@@ -37,6 +39,8 @@ export function availableActions(user, row) {
   const pending = row.work_orders.some(document => document.status === 'pending');
   return Object.entries(transitions).filter(([key, [roles, states]]) => {
     if (!roles.split(' ').includes(user.role) || !states.includes(row.status)) return false;
+    if (key === 'leaveArrival') return row.arrival_space !== null;
+    if (key === 'arrivalPark') return !row.bay_id && !row.parking_space;
     if (key === 'payment') return row.total > row.paid;
     if (key === 'classifyLine') return row.work_orders.some(document => document.status !== 'declined'
       && document.lines.some(line => line.unclassified));

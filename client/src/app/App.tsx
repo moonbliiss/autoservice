@@ -21,7 +21,8 @@ export function App() {
 
   return <>
     <AppShell user={dashboard?.user} section={section} busy={busy} submitting={submitting} notice={notice}
-      navigate={navigate} changeProfile={changeProfile}>
+      navigate={navigate} changeProfile={changeProfile}
+      mapOverview={dashboard?.user.role === 'advisor' && section === 'overview' && !detail}>
       {!dashboard ? <p>{busy ? 'Загрузка мастерской…'
         : 'Не удалось подключиться к мастерской. Проверьте запуск сервера и обновите страницу.'}</p>
         : detail ? <RequestDetails row={detail} role={dashboard.user.role}
@@ -33,7 +34,8 @@ export function App() {
             onOrder={need => showAction({ key: 'orderSupply', requestId: need.request_id, partId: need.part_id ?? undefined,
               quantity: need.approved_remaining - need.stock - need.incoming })} />
           : <Overview dashboard={dashboard} onMove={moveOnMap} onOpen={openRequest}
-            onNewRequest={onNewRequest} onRequests={() => navigate('requests')} onStock={() => navigate('stock')}
+            onNewRequest={onNewRequest} onNewArrival={arrivalSpace => showAction({ key: 'newRequest', arrivalSpace })}
+            onRequests={() => navigate('requests')} onStock={() => navigate('stock')}
             onCompleteTransfer={completeTransfer} submitting={submitting} />)
         : section === 'requests' || section === 'archive' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
           onSearch={setSearch} filter={filter} onFilter={setFilter} onNewRequest={onNewRequest} archive={section === 'archive'} />

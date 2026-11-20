@@ -11,7 +11,7 @@ export type RequestAction =
   | 'repairReport' | 'ready' | 'rework' | 'release' | 'returnCar' | 'payment' | 'issue'
   | 'recordDecision' | 'moveBay' | 'park'
   | 'dispatchTransfer' | 'completeTransfer' | 'cancelTransfer'
-  | 'classifyLine'
+  | 'classifyLine' | 'arrivalPark' | 'leaveArrival'
 export type PaymentMethod = 'cash' | 'card' | 'transfer'
 export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose' | 'dispatchTransfer'>
 
@@ -26,6 +26,7 @@ export interface RequestSummary {
   eta: string | null
   bay_id?: number | null
   parking_space: number | null
+  arrival_space?: number | null
   assigned_to_me?: boolean
   client_name?: string
   routing_actions?: RoutingAction[]
@@ -113,7 +114,7 @@ export interface ParkingSpace {
 
 export type RequestTracking = Pick<RequestDetail,
   'id' | 'model' | 'plate' | 'description' | 'status' | 'appointment' | 'eta' | 'parking_space' | 'parking_reason' |
-  'parts_expected_date' | 'visit_note' | 'history'> & {
+  'parts_expected_date' | 'arrival_space' | 'visit_note' | 'history'> & {
   work_orders: (Omit<WorkOrderDocument, 'lines'> & { lines: { name: string; quantity: number; unit_price: number }[] })[]
   payments: NonNullable<RequestDetail['payments']>
   total: number

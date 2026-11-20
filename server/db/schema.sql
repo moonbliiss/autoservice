@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS request_tracking (
   token TEXT NOT NULL UNIQUE
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS arrival_parking (
+  space_id INTEGER PRIMARY KEY CHECK (space_id BETWEEN 1 AND 5),
+  request_id INTEGER NOT NULL UNIQUE REFERENCES service_requests(id)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY,
   request_id INTEGER NOT NULL UNIQUE REFERENCES service_requests(id),

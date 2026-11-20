@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Dashboard, PartSupply, RequestAction, RequestDetail, WarehouseNeed } from '../../api/types'
-import type { MapLocation } from '../garage/mapLayout'
+import { arrivalLocations, type MapLocation } from '../garage/mapLayout'
 import { money } from '../../shared/format'
 import { paymentLabels } from '../../shared/labels'
 import { AdvisorRequestFields } from './AdvisorRequestFields'
@@ -10,7 +10,7 @@ import { Field, SelectField, TextField, type Option } from './fields'
 
 export type FormAction =
   | { key: RequestAction; row: RequestDetail; destination?: MapLocation; documentVersion?: number }
-  | { key: 'newRequest'; vehicleId?: number }
+  | { key: 'newRequest'; vehicleId?: number; arrivalSpace?: number }
   | { key: 'restock' }
   | { key: 'orderSupply'; requestId?: number; partId?: number; quantity?: number }
   | { key: 'receiveSupply'; supply: PartSupply }
@@ -62,7 +62,7 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
   if (action.key === 'warehouseIssue') return <WarehouseIssueFields need={action.need} />
   if (action.key === 'receiveSupply') return <ReceiveSupplyFields supply={action.supply} />
   if (action.key === 'newRequest') return dashboard.user.role === 'advisor'
-    ? <AdvisorRequestFields clients={dashboard.clients} vehicles={dashboard.vehicles} />
+    ? <AdvisorRequestFields clients={dashboard.clients} vehicles={dashboard.vehicles} arrivalSpace={action.arrivalSpace} />
     : <NewRequestFields vehicles={dashboard.vehicles} vehicleId={action.vehicleId} />
   if (action.key === 'restock') return <>
     <SelectField label="Запчасть" name="part_id" options={(dashboard.parts ?? []).map(part => [part.id, part.name])} />
@@ -79,6 +79,16 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
       <Field label="Пробег, км" name="mileage" type="number" defaultValue={row.mileage ?? ''} min={0} max={5000000} />
       <SelectField label="Приоритет" name="priority" options={[['normal', 'Обычный'], ['urgent', 'Срочный']]} />
       <TextField label="Состояние при приёмке и комплектность" name="note" required={false} />
+    </>
+    case 'arrivalPark': {
+      const occupied = new Set(dashboard.requests.filter(request => request.id !== row.id).map(request => request.arrival_space))
+      return <SelectField label="Клиентская стоянка" name="arrival_space" defaultValue={row.arrival_space ?? ''}
+        options={ [['', 'Выберите место'], ...arrivalLocations.filter(place => !occupied.has(place.id))
+          .map((place): Option => [place.id, `Место ${place.id}`])] } />
+    }
+    case 'leaveArrival': return <>
+      <p>Освободить место {row.arrival_space} на клиентской стоянке?</p>
+      <input type="hidden" name="arrival_space" value={row.arrival_space ?? ''} />
     </>
     case 'diagnose':
     case 'moveBay':

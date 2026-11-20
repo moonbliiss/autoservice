@@ -1,4 +1,4 @@
-import { garagePosts, parkingDepth, parkingLocations, parkingWidth, warehouse } from './mapLayout';
+import { arrivalLocations, garagePosts, parkingDepth, parkingLocations, parkingWidth, warehouse } from './mapLayout';
 
 export type Point = [number, number, number];
 export interface Face { points: Point[]; color: string; stroke: string | null; center: Point }
@@ -191,6 +191,12 @@ function makeParking() {
   for (const place of parkingLocations) {
     flat(ground, place.x - parkingWidth / 2, -.04, place.z - parkingDepth / 2,
       parkingWidth, parkingDepth, '#828981');
+  }
+  box(ground, -10.4, -.65, 7.1, 18.1, .58, 9.5, '#556368');
+  flat(ground, -10.38, -.059, 7.12, 18.06, 9.46, '#798b90');
+  flat(ground, -10.15, -.048, 16.16, 17.58, .23, '#b4c5c2');
+  for (const place of arrivalLocations) {
+    flat(ground, place.x - parkingWidth / 2, -.04, place.z - parkingDepth / 2, parkingWidth, parkingDepth, '#899fa5');
   }
 }
 

@@ -1,4 +1,5 @@
 import type { Dashboard, RequestSummary, Status } from '../../api/types'
+import { code } from '../../shared/format'
 import { statusLabels } from '../../shared/labels'
 import { Button, Heading, Metrics, Panel } from '../../shared/ui'
 import { StatusTag, closedStatuses, workshopStatuses } from '../requests/status'
@@ -27,24 +28,24 @@ function AdvisorRequests({ requests, onOpen }: { requests: RequestSummary[]; onO
     else byStatus.set(row.status, [row])
   }
 
-  const groups = (Object.keys(statusLabels) as Status[]).filter(status =>
-    !closedStatuses.has(status) && status !== 'received' && status !== 'approved')
+  const groups = [
+    { title: 'Ждут назначения в цех', rows: unassigned },
+    ...(Object.keys(statusLabels) as Status[]).map(status => ({ title: statusLabels[status], rows: byStatus.get(status) ?? [] })),
+  ].filter(group => group.rows.length > 0)
 
-  return <>
-    <Panel title="Ждут назначения в цех">
-      {unassigned.length > 0 && <RequestTable requests={unassigned} role="advisor" onOpen={onOpen} assignmentQueue />}
-    </Panel>
-    {groups.map(status => {
-      const rows = byStatus.get(status)
-      return <Panel key={status} title={statusLabels[status]}>
-        {rows && <RequestTable requests={rows} role="advisor" onOpen={onOpen} />}
-      </Panel>
-    })}
-  </>
+  return <div className="map-queue">
+    {groups.map(({ title, rows }) => <section key={title}>
+      <h3>{title}</h3>
+      {rows.map(row => <Button key={row.id} variant="text-button" onClick={() => onOpen(row.id)}>
+        {code(row.id)} · {row.model} <span className="meta">{row.plate}</span>
+      </Button>)}
+    </section>)}
+  </div>
 }
 
-export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, onStock, onCompleteTransfer, submitting }: {
+export function Overview({ dashboard, onMove, onOpen, onNewRequest, onNewArrival, onRequests, onStock, onCompleteTransfer, submitting }: {
   dashboard: Dashboard; onOpen: OpenRequest; onNewRequest: () => void; onRequests: () => void; onMove: MoveRequest; onStock: () => void;
+  onNewArrival: (place: number) => void;
   onCompleteTransfer: (row: RequestSummary) => void; submitting: boolean
 }) {
   const { requests, user: { role }, bays = [] } = dashboard
@@ -59,7 +60,11 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, 
     <Panel title="История обслуживания"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
   </>
   const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove}
-    onOpenStock={role === 'advisor' || role === 'manager' ? onStock : undefined} />
+    onOpenStock={role === 'advisor' || role === 'manager' ? onStock : undefined}
+    onNewRequest={role === 'advisor' ? onNewRequest : undefined} onNewArrival={role === 'advisor' ? onNewArrival : undefined}
+    queues={role === 'advisor' && requests.some(row => !closedStatuses.has(row.status))
+      ? <AdvisorRequests requests={requests} onOpen={onOpen} /> : undefined} />
+  if (role === 'advisor') return floor
   if (role === 'mechanic') {
     const transfer = requests.find(row => row.transfer && row.assigned_to_me)
     const active = requests.find(row => row.status !== 'paused' && workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me)
@@ -75,24 +80,19 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, 
       <Panel title="Задачи смены"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
     </>
   }
-  const manager = role === 'manager'
   return <>
-    <Heading title={manager ? 'Обзор автосервиса' : 'Карта сервиса'} subtitle="Загрузка цеха и движение заказов"
-      eyebrow={manager ? 'КАБИНЕТ УПРАВЛЯЮЩЕГО' : 'РАБОЧЕЕ МЕСТО ПРИЁМЩИКА'}
-      action={!manager && <Button variant="primary" onClick={onNewRequest}>Новая заявка</Button>} />
+    <Heading title="Обзор автосервиса" subtitle="Загрузка цеха и движение заказов" eyebrow="КАБИНЕТ УПРАВЛЯЮЩЕГО" />
     <Metrics items={[
       ['Новые заявки', requests.filter(row => row.status === 'new').length],
       ['Занятые посты', `${bays.filter(bay => bay.status).length} / ${bays.length}`], ['Готовы к выдаче', ready],
     ]} />
     {floor}
-    {manager ? <>
-      <Panel title="Ждут назначения в цех">
-        <RequestTable requests={requests.filter(needsWorkshopAssignment)} role={role} onOpen={onOpen}
-          empty="Все принятые автомобили распределены." />
-      </Panel>
-      <Panel title="Недавние заявки" action={<Button variant="text-button" onClick={onRequests}>Все заявки</Button>}>
-        <RequestTable requests={requests.filter(row => row.status !== 'issued').slice(0, 5)} role={role} onOpen={onOpen} />
-      </Panel>
-    </> : <AdvisorRequests requests={requests} onOpen={onOpen} />}
+    <Panel title="Ждут назначения в цех">
+      <RequestTable requests={requests.filter(needsWorkshopAssignment)} role={role} onOpen={onOpen}
+        empty="Все принятые автомобили распределены." />
+    </Panel>
+    <Panel title="Недавние заявки" action={<Button variant="text-button" onClick={onRequests}>Все заявки</Button>}>
+      <RequestTable requests={requests.filter(row => row.status !== 'issued').slice(0, 5)} role={role} onOpen={onOpen} />
+    </Panel>
   </>
 }

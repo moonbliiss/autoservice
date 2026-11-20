@@ -51,3 +51,6 @@
 .embedded-map { margin: 0; color: #252725; font: 15px "Segoe UI", Arial, sans-serif; }
 .embedded-map button { font-family: inherit; cursor: pointer; }
 .embedded-map .scene { height: 100dvh; }
+.arrival-marker { background: #e9f1f5; border-color: #7996a4; }
+.arrival-marker[data-occupied="true"][aria-pressed="false"] { background: #bad5e4; border-color: #6b96aa; }
+@media (max-width: 460px) { .workshop-map-main .camera { top: 8px; right: 9px; } }

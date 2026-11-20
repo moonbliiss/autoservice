@@ -172,7 +172,7 @@ export function mountGarage(
         return { place, x, y, hidden: x < 12 || y < 22 || x > viewport.width - 12 || y > viewport.height - 4 }
       }
       onMarkers([...sceneLocations.map(place => {
-        const z = place.kind === 'bay' ? 4.4 : place.z + (place.id <= 5 ? -2 : 2.3)
+        const z = place.kind === 'bay' ? 4.4 : place.z + (place.kind === 'parking' && place.id <= 5 ? -2 : 2.3)
         return marker(place, [place.x, .02, z])
       }), marker('warehouse', [15.3, 3.2, -11.5])])
     }
@@ -227,10 +227,11 @@ export function mountGarage(
         ? Math.abs(x - place.x) <= 2.55 && z >= -3.53 && z <= 4.19
         : Math.abs(x - place.x) <= parkingWidth / 2 && Math.abs(z - place.z) <= parkingDepth / 2)
     },
-    update(bays: readonly Bay[], parking: readonly ParkingSpace[], selected: MapLocation | null, targets: string[]) {
+    update(bays: readonly Bay[], parking: readonly ParkingSpace[], arrivals: readonly ParkingSpace[],
+      selected: MapLocation | null, targets: string[]) {
       const next = new Map<number, SceneLocation>()
       for (const [index, place] of sceneLocations.entries()) {
-        const entries = place.kind === 'bay' ? bays : parking
+        const entries = place.kind === 'bay' ? bays : place.kind === 'arrival' ? arrivals : parking
         const entry = entries.find(item => item.id === place.id)
         if (entry?.occupied) next.set(entry.request_id ?? -(index + 1), place)
       }

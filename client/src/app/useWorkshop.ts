@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, createRequest, errorMessage, getDashboard, getRequest, issueStock, orderSupply, receiveSupply, restock, selectProfile, updateRequest } from '../api/client'
-import type { Dashboard, Profile, RequestDetail, RequestSummary, RoutingAction, Submission } from '../api/types'
+import type { Dashboard, Profile, RequestDetail, RequestSummary, Submission } from '../api/types'
 import type { FormAction } from '../features/actions/ActionFields'
-import type { MapLocation } from '../features/garage/mapLayout'
+import type { MoveRequest } from '../features/garage/WorkshopFloor'
 import { profileKey, type Section } from './navigation'
 
 export function useWorkshop() {
@@ -171,15 +171,17 @@ export function useWorkshop() {
     setAction(next)
   }
 
-  async function moveOnMap(id: number, key: RoutingAction, destination: MapLocation) {
+  const moveOnMap: MoveRequest = async (id, key, destination) => {
     if (locked.current || action) return
     const before = ++revision.current
-    if (key === 'park') {
+    if (key === 'park' || key === 'arrivalPark' || key === 'leaveArrival') {
       locked.current = true
       setSubmitting(true)
       try {
-        await updateRequest(id, key, { parking_space: destination.id })
-        await refreshDashboard(`Автомобиль переведён на место ${destination.id}. Ожидает запчасти.`)
+        await updateRequest(id, key, { [key === 'park' ? 'parking_space' : 'arrival_space']: destination.id })
+        const message = key === 'park' ? `Автомобиль переведён на место ${destination.id}. Ожидает запчасти.`
+          : key === 'arrivalPark' ? `Приезд отмечен. Клиентская стоянка, место ${destination.id}.` : 'Место на клиентской стоянке освобождено.'
+        await refreshDashboard(message)
       } catch (error) {
         await refreshDashboard(errorMessage(error), true)
       } finally {
