@@ -31,11 +31,14 @@ export function Panel({ title, children, inset = false, action }: {
 }
 
 export function Table({ headings, rows, empty = 'Здесь пока ничего нет.' }: {
-  headings: string[]; rows: { key: string | number; cells: ReactNode[] }[]; empty?: string
+  headings: string[]; rows: { key: string | number; cells: ReactNode[]; onClick?: () => void }[]; empty?: string
 }) {
   if (!rows.length) return <p className="empty">{empty}</p>
   return <div className="table-wrap"><table>
     <thead><tr>{headings.map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
-    <tbody>{rows.map(({ key, cells }) => <tr key={key}>{cells.map((cell, index) => <td key={headings[index]}>{cell}</td>)}</tr>)}</tbody>
+    <tbody>{rows.map(({ key, cells, onClick }) => <tr key={key} className={onClick ? 'clickable-row' : undefined}
+      onClick={onClick && (event => {
+        if (event.target instanceof Element && !event.target.closest('a, button')) onClick()
+      })}>{cells.map((cell, index) => <td key={headings[index]}>{cell}</td>)}</tr>)}</tbody>
   </table></div>
 }

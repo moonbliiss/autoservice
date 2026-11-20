@@ -1,22 +1,51 @@
 .scene {
-  position: relative; overflow: hidden; isolation: isolate; width: 100%; height: min(45vw, 410px); min-height: 290px;
-  background: radial-gradient(ellipse at 50% 47%, #f3f0e6 5%, #e5e2d7 88%);
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: clamp(235px, 43vw, 520px);
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 46%, #f2f1e8 12%, #e2e6dc 88%);
 }
-.scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
-.scene canvas:active { cursor: grabbing; }
-.scene canvas:focus-visible { outline: 2px solid #a64121; outline-offset: -4px; }
-.scene-help, .camera { position: absolute; z-index: 2; }
-.scene-help { left: 19px; top: 13px; font-size: .8125rem; color: #53574e; pointer-events: none; }
-.camera { right: 15px; bottom: 15px; display: flex; border-radius: 10px; background: #fffdf7; border: 1px solid #dfdcd1; }
-.camera button { width: 39px; height: 38px; border: 0; color: inherit; background: none; font-size: 1.23rem; }
-.camera button + button { border-left: 1px solid #e8e5dc; }
-.camera button:hover { background: #f1ede3; }
+.scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.camera {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  border-radius: 9px;
+  background: #fffdf7;
+  border: 1px solid #d7dcd0;
+}
+.camera button { width: 36px; height: 34px; border: 0; color: inherit; background: none; font-size: 1.2rem; }
+.camera button + button { border-left: 1px solid #e8e9df; }
+.camera button:hover { background: #eef0e7; }
 .markers { position: absolute; inset: 0; pointer-events: none; }
-.marker { position: absolute; pointer-events: auto; transform: translate(-50%, -100%); min-height: 32px; border-radius: 8px; padding: 5px 9px; border: 1px solid #ebe4d4; background: #fffdf7; color: #35382f; box-shadow: 0 3px 10px #2228; font-size: .875rem; font-weight: 730; white-space: nowrap; }
-.marker::after { position: absolute; top: calc(100% - 3px); left: calc(50% - 3px); width: 6px; height: 6px; content: ""; background: inherit; transform: rotate(45deg); }
-.marker[aria-pressed="true"] { background: #313831; border-color: #313831; color: #fffdf7; z-index: 1; }
+.marker {
+  position: absolute;
+  pointer-events: auto;
+  transform: translate(-50%, -77%);
+  border: 1px solid #c1cbbd;
+  border-radius: 6px;
+  background: #fffdf7;
+  color: #353b33;
+  box-shadow: 0 2px 6px #232a2533;
+  font-weight: 730;
+  white-space: nowrap;
+  padding: 3px 7px;
+  font-size: .8rem;
+}
+.parking-marker { min-width: 24px; padding: 2px 4px; font-size: .74rem; font-variant-numeric: tabular-nums; }
+.marker[data-occupied="true"] { background: #f3e7cb; border-color: #c3a575; }
+.marker[data-target="true"] { background: #e4f4e6; border-color: #6e9c7b; color: #214d32; }
+.marker[aria-pressed="true"] { background: #304638; border-color: #304638; color: #fffdf7; z-index: 1; }
+.marker:hover, .marker:focus-visible { z-index: 2; outline: 2px solid #426d50; outline-offset: 1px; }
+@media (max-width: 460px) {
+  .camera { top: 10px; bottom: auto; }
+  .bay-marker { font-size: .72rem; padding: 2px 5px; }
+  .parking-marker { min-width: 20px; padding: 1px 3px; font-size: .7rem; }
+}
 .scene [hidden] { display: none; }
 .embedded-map { margin: 0; color: #252725; font: 15px "Segoe UI", Arial, sans-serif; }
 .embedded-map button { font-family: inherit; cursor: pointer; }
-.embedded-map button:focus-visible { outline: 2px solid #a64121; outline-offset: 3px; }
-.embedded-map .scene { height: 100dvh; min-height: 0; }
+.embedded-map .scene { height: 100dvh; }

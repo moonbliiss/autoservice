@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, createRequest, errorMessage, getDashboard, getRequest, restock, selectProfile, updateRequest } from '../api/client'
-import type { Dashboard, Profile, RequestDetail, Submission } from '../api/types'
+import type { Dashboard, Profile, RequestDetail, RoutingAction, Submission } from '../api/types'
 import type { FormAction } from '../features/actions/ActionFields'
+import type { MapLocation } from '../features/garage/mapLayout'
 import { profileKey, type Section } from './navigation'
 
 export function useWorkshop() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [section, setSection] = useState<Section>('overview')
   const [detail, setDetail] = useState<RequestDetail | null>(null)
-  const [selectedBay, setSelectedBay] = useState(1)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [action, setAction] = useState<FormAction | null>(null)
@@ -58,7 +58,6 @@ export function useWorkshop() {
   function resetView() {
     setSection('overview')
     setDetail(null)
-    setSelectedBay(1)
     setSearch('')
     setFilter('all')
   }
@@ -75,7 +74,6 @@ export function useWorkshop() {
       const next = await getDashboard()
       resetView()
       setDashboard(next)
-      setSelectedBay(next.bays?.find(bay => next.requests.some(row => row.id === bay.request_id))?.id ?? 1)
       setNotice(null)
       if (detail && next.requests.some(row => row.id === detail.id)) {
         setDetail(await getRequest(detail.id))
@@ -167,6 +165,22 @@ export function useWorkshop() {
     setAction(next)
   }
 
+  async function moveOnMap(id: number, key: RoutingAction, destination: MapLocation) {
+    if (locked.current || action) return
+    const before = ++revision.current
+    try {
+      const row = await getRequest(id)
+      if (before !== revision.current) return
+      if (!row.actions.includes(key)) {
+        notify('Перемещение больше недоступно. Проверьте текущий статус заявки.', true)
+        return
+      }
+      showAction({ key, row, destination })
+    } catch (error) {
+      if (before === revision.current) notify(errorMessage(error), true)
+    }
+  }
+
   async function submitAction(data: Submission) {
     if (!action || locked.current) return
     ++revision.current
@@ -176,7 +190,11 @@ export function useWorkshop() {
     const { key } = action
     try {
       if (key === 'restock') await restock(data)
-      else setDetail(await (key === 'newRequest' ? createRequest(data) : updateRequest(action.row.id, key, data)))
+      else if (key === 'newRequest') setDetail(await createRequest(data))
+      else {
+        const updated = await updateRequest(action.row.id, key, data)
+        if (!action.destination) setDetail(updated)
+      }
     } catch (error) {
       setFormError(errorMessage(error))
       locked.current = false
@@ -197,8 +215,8 @@ export function useWorkshop() {
   }
 
   return {
-    dashboard, section, detail, selectedBay, setSelectedBay, search, setSearch, filter, setFilter,
+    dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction: () => setAction(null), formError, notice, busy, submitting,
-    changeProfile, navigate, openRequest, showAction, submitAction,
+    changeProfile, navigate, openRequest, showAction, submitAction, moveOnMap,
   }
 }

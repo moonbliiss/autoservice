@@ -62,7 +62,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     const bay = get('SELECT name FROM bays WHERE id=?', bayId);
     requireValue(bay, 'Выберите существующий пост.');
     requireValue(!get('SELECT 1 FROM orders WHERE bay_id=? AND id<>?', bayId, row.order_id), 'Этот пост уже занят.', 409);
-    requireValue(!get('SELECT 1 FROM orders WHERE mechanic_id=? AND bay_id IS NOT NULL AND id<>?', mechanicId, row.order_id),
+    requireValue(!get("SELECT 1 FROM orders WHERE mechanic_id=? AND bay_id IS NOT NULL AND status <> 'paused' AND id<>?", mechanicId, row.order_id),
       'Механик уже работает на другом посту.', 409);
     updateOrder(row, status, { mechanic_id: mechanicId, bay_id: bayId,
       work_instructions: str(input.instructions, 'Задача и ожидаемый результат'), pause_reason: null });
@@ -132,6 +132,9 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     return transaction(() => {
       const row = getRequest(id);
       requireValue(permitted(user, row), 'Заявка не найдена.', 404);
+      if (key === 'resume' && row.status === 'paused' && user.role === 'mechanic' && row.mechanic_id === user.id && row.bay_id) {
+        requireValue(!row.mechanic_busy, 'Сначала завершите или поставьте на паузу текущую задачу.', 409);
+      }
       const money = amounts(row);
       requireValue(Object.hasOwn(transitions, key) && availableActions(user, { ...row, ...money }).includes(key),
         'Действие недоступно на текущем этапе или для этого профиля.', 409);

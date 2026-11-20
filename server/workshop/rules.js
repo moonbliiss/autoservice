@@ -29,7 +29,12 @@ export function availableActions(user, row) {
   return Object.entries(transitions).filter(([key, [roles, states]]) => {
     if (!roles.split(' ').includes(user.role) || !states.includes(row.status)) return false;
     if (key === 'payment') return row.total > row.paid;
-    if (key === 'release' || key === 'resume') return Boolean(row.bay_id);
+    if (key === 'release') return Boolean(row.bay_id);
+    if (key === 'resume') return Boolean(row.bay_id) && !row.mechanic_busy;
     return key !== 'issue' || row.total === row.paid;
   }).map(([key]) => key);
+}
+
+export function routingActions(status) {
+  return ['park', 'moveBay', 'assign', 'diagnose'].filter(key => transitions[key][1].includes(status));
 }

@@ -174,3 +174,29 @@ test('заявка приёмщика для существующего клие
   assert.match(workshop.tracking(order.tracking_token).visit_note, /через правые ворота/);
   assert.equal(workshop.details(customer, order.id).tracking_token, undefined);
 });
+
+test('пауза освобождает механика, а прежняя машина сохраняет пост', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const mechanic = workshop.profile('mechanic2');
+  const original = workshop.dashboard(mechanic).requests.find(row => row.status === 'repairing');
+  const next = workshop.dashboard(advisor).requests.find(row => row.status === 'new');
+
+  workshop.action(mechanic, original.id, 'pause', { note: 'Перерыв в ремонте' });
+  assert.equal(workshop.dashboard(advisor).bays.find(bay => bay.id === original.bay_id).request_id, original.id);
+  workshop.action(advisor, next.id, 'receive', { mileage: 63000 });
+  const diagnose = { mechanic_id: mechanic.id, bay_id: 3, instructions: 'Проверить вибрацию руля' };
+  assert.throws(() => workshop.action(advisor, next.id, 'diagnose', { ...diagnose, bay_id: original.bay_id }), /пост уже занят/);
+  workshop.action(advisor, next.id, 'diagnose', diagnose);
+
+  const paused = workshop.details(mechanic, original.id);
+  assert.equal(paused.resume_blocked, true);
+  assert.ok(!paused.actions.includes('resume'));
+  assert.throws(() => workshop.action(mechanic, original.id, 'resume', {}), /текущую задачу/);
+  workshop.action(mechanic, next.id, 'startDiagnosis', {});
+  workshop.action(mechanic, next.id, 'diagnosisReport', { result: 'Нужна балансировка', minutes: 18 });
+
+  assert.equal(workshop.details(mechanic, original.id).resume_blocked, false);
+  assert.equal(workshop.action(mechanic, original.id, 'resume', {}).status, 'repairing');
+});

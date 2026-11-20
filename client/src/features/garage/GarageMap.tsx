@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Bay } from '../../api/types'
-import { garagePosts } from './geometry'
+import type { Bay, ParkingSpace } from '../../api/types'
+import { garagePosts, locationKey, type MapLocation } from './mapLayout'
 import { mountGarage, type MarkerPosition } from './renderer'
 import './garage.css'
 
-export function GarageMap({ bays, selected, onSelect }: {
-  bays: readonly Bay[]; selected: number; onSelect: (id: number) => void
+const noTargets: string[] = []
+
+export function GarageMap({ bays, parking, selected, targets = noTargets, onSelect }: {
+  bays: readonly Bay[]; parking: readonly ParkingSpace[]; selected: MapLocation | null
+  targets?: string[]; onSelect: (place: MapLocation) => void
 }) {
   const stage = useRef<HTMLElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const renderer = useRef<ReturnType<typeof mountGarage>>(null)
+  const pointerStart = useRef<{ x: number; y: number } | null>(null)
   const [positions, setPositions] = useState<MarkerPosition[]>([])
+  const selectedKey = selected && locationKey(selected)
 
   useEffect(() => {
     if (!canvas.current || !stage.current) return
@@ -23,26 +28,40 @@ export function GarageMap({ bays, selected, onSelect }: {
   }, [])
 
   useEffect(() => {
-    renderer.current?.update(bays, selected)
-  }, [bays, selected])
+    renderer.current?.update(bays, parking, selected, targets)
+  }, [bays, parking, selected, targets])
 
   return <section className="scene" ref={stage} aria-label="Интерактивная 3D-карта">
-    <canvas id="garage" ref={canvas} tabIndex={0}
-      aria-label="3D-модель гаража. Клавиши со стрелками поворачивают камеру." />
-    <div className="markers" aria-label="Выбор поста">
-      {garagePosts.map((post, index) => {
-        const id = index + 1
-        const position = positions[index]
-        return <button key={id} className="marker" type="button" hidden={!position || position.hidden}
-          style={{ left: position?.x, top: position?.y }} aria-label={`Пост ${id}, ${post.name}`}
-          aria-pressed={selected === id} onClick={() => onSelect(id)}>Пост {id}</button>
+    <canvas id="garage" ref={canvas} aria-label="3D-модель цеха и парковки"
+      onPointerDown={event => { pointerStart.current = { x: event.clientX, y: event.clientY } }}
+      onPointerCancel={() => { pointerStart.current = null }}
+      onClick={event => {
+        const start = pointerStart.current
+        pointerStart.current = null
+        if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const place = renderer.current?.pick(event.clientX - bounds.left, event.clientY - bounds.top)
+        if (place) onSelect(place)
+      }} />
+    <div className="markers" aria-label="Подъёмники и парковочные места">
+      {positions.map(({ place, x, y, hidden }) => {
+        const key = locationKey(place)
+        const bay = place.kind === 'bay'
+        const model = (bay ? bays : parking).find(entry => entry.id === place.id)?.model
+        const name = bay ? `Пост ${place.id}, ${garagePosts[place.id - 1].name}`
+          : `Место ${place.id}, ${model ?? 'свободно'}`
+        return <button key={key} className={`marker ${bay ? 'bay-marker' : 'parking-marker'}`} type="button" hidden={hidden}
+          data-location={key} data-occupied={Boolean(model)} data-target={targets.includes(key)}
+          style={{ left: x, top: y }} aria-label={name} title={bay && model ? `${name} · ${model}` : name}
+          aria-pressed={selectedKey === key} onClick={() => onSelect(place)}>
+          {bay ? `Пост ${place.id}` : String(place.id).padStart(2, '0')}
+        </button>
       })}
     </div>
-    <div className="scene-help">Потяните, чтобы повернуть</div>
-    <div className="camera" aria-label="Управление камерой">
+    <div className="camera" aria-label="Масштаб карты">
       <button type="button" aria-label="Отдалить" title="Отдалить" onClick={() => renderer.current?.zoomBy(1 / 1.15)}>−</button>
       <button type="button" aria-label="Приблизить" title="Приблизить" onClick={() => renderer.current?.zoomBy(1.15)}>+</button>
-      <button type="button" aria-label="Сбросить вид" title="Сбросить вид" onClick={() => renderer.current?.reset()}>⌂</button>
+      <button type="button" aria-label="Сбросить масштаб" title="Сбросить масштаб" onClick={() => renderer.current?.reset()}>⌂</button>
     </div>
   </section>
 }

@@ -11,6 +11,7 @@ export type RequestAction =
   | 'repairReport' | 'ready' | 'rework' | 'release' | 'returnCar' | 'payment' | 'issue'
   | 'recordDecision' | 'moveBay' | 'park'
 export type PaymentMethod = 'cash' | 'card' | 'transfer'
+export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose'>
 
 export interface RequestSummary {
   id: number
@@ -24,6 +25,7 @@ export interface RequestSummary {
   parking_space: number | null
   assigned_to_me?: boolean
   client_name?: string
+  routing_actions?: RoutingAction[]
 }
 
 export interface EstimateLine {
@@ -49,6 +51,7 @@ export interface RequestDetail extends RequestSummary {
   intake_note?: string | null
   inspection_note?: string | null
   pause_reason?: string | null
+  resume_blocked?: boolean
   parking_reason: string | null
   parts_expected_date: string | null
   tracking_token?: string

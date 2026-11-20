@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Dashboard, RequestAction, RequestDetail } from '../../api/types'
+import type { MapLocation } from '../garage/mapLayout'
 import { money } from '../../shared/format'
 import { paymentLabels } from '../../shared/labels'
 import { AdvisorRequestFields } from './AdvisorRequestFields'
@@ -7,7 +8,7 @@ import { EstimateFields } from './EstimateFields'
 import { Field, SelectField, TextField, type Option } from './fields'
 
 export type FormAction =
-  | { key: RequestAction; row: RequestDetail }
+  | { key: RequestAction; row: RequestDetail; destination?: MapLocation }
   | { key: 'newRequest'; vehicleId?: number }
   | { key: 'restock' }
 
@@ -26,15 +27,15 @@ function NewRequestFields({ vehicles = [], vehicleId }: { vehicles: Dashboard['v
   </>
 }
 
-function AssignmentFields({ dashboard, row }: { dashboard: Dashboard; row: RequestDetail }) {
+function AssignmentFields({ dashboard, row, bayId }: { dashboard: Dashboard; row: RequestDetail; bayId?: number }) {
   const bays = dashboard.bays ?? []
   const usedBays = bays.filter(bay => bay.status && bay.request_id !== row.id)
-  const usedMechanics = new Set(usedBays.map(bay => bay.mechanic_id))
+  const usedMechanics = new Set(usedBays.filter(bay => bay.status !== 'paused').map(bay => bay.mechanic_id))
   const free = bays.filter(bay => !usedBays.includes(bay))
   const workers = (dashboard.mechanics ?? []).filter(person => !usedMechanics.has(person.id))
   return <>
     {(!free.length || !workers.length) && <p className="muted">Для назначения нужен свободный пост и механик.</p>}
-    <SelectField label="Пост" name="bay_id" defaultValue={row.bay_id ?? ''}
+    <SelectField label="Пост" name="bay_id" defaultValue={bayId ?? row.bay_id ?? ''}
       options={[['', 'Выберите пост'], ...free.map((bay): Option => [bay.id, `Пост ${bay.id} · ${bay.name}`])]} />
     <SelectField label="Механик" name="mechanic_id" defaultValue={row.mechanic_id ?? ''}
       options={[['', 'Выберите механика'], ...workers.map((person): Option => [person.id, person.name])]} />
@@ -83,13 +84,13 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
     </>
     case 'diagnose':
     case 'moveBay':
-    case 'assign': return <AssignmentFields dashboard={dashboard} row={row} />
+    case 'assign': return <AssignmentFields dashboard={dashboard} row={row} bayId={action.destination?.id} />
     case 'park': {
       const spaces = (dashboard.parking ?? []).filter(space => !space.request_id || space.request_id === row.id)
       return <>
         {spaces.length ? <p>Автомобиль будет ждать запчасти на парковке. Пост и механик освободятся.</p>
           : <p>Все места на парковке заняты.</p>}
-        <SelectField label="Место на парковке" name="parking_space" defaultValue={row.parking_space ?? ''}
+        <SelectField label="Место на парковке" name="parking_space" defaultValue={action.destination?.id ?? row.parking_space ?? ''}
           options={ [['', 'Выберите место'], ...spaces.map((space): Option => [space.id, `Место ${space.id}`])] } />
         <TextField label="Какие запчасти ожидаются (видно клиенту)" name="parking_reason" maxLength={600}
           defaultValue={row.parking_reason ?? ''} />

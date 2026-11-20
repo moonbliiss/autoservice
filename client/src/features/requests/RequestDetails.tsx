@@ -86,6 +86,7 @@ export function RequestDetails({ row, role, onAction, onBack }: {
           <p className="request-text">{row.work_instructions}</p>
           {expected && <p className="job-output muted">{expected}</p>}
           {row.pause_reason && <p className="muted request-text">Пауза: {row.pause_reason}</p>}
+          {row.resume_blocked && <p className="muted">Сначала завершите или поставьте на паузу текущую задачу.</p>}
         </Panel>}
         <Panel inset title="Обращение"><p className="request-text">{row.description}</p>
           <dl className="facts">{facts.filter(([, value]) => value != null && value !== '').map(([label, value]) =>

@@ -11,9 +11,9 @@ import '../shared/ui.css'
 
 export function App() {
   const {
-    dashboard, section, detail, selectedBay, setSelectedBay, search, setSearch, filter, setFilter,
+    dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction, formError, notice, busy, submitting,
-    changeProfile, navigate, openRequest, showAction, submitAction,
+    changeProfile, navigate, openRequest, showAction, submitAction, moveOnMap,
   } = useWorkshop()
   const onNewRequest = (vehicleId?: number) => showAction({ key: 'newRequest', vehicleId })
 
@@ -24,8 +24,8 @@ export function App() {
         : 'Не удалось подключиться к мастерской. Проверьте запуск сервера и обновите страницу.'}</p>
         : detail ? <RequestDetails row={detail} role={dashboard.user.role}
           onAction={key => showAction({ key, row: detail })} onBack={() => navigate(section)} />
-        : section === 'overview' ? <Overview dashboard={dashboard} selectedBay={selectedBay} onSelectBay={setSelectedBay}
-          onOpen={openRequest} onNewRequest={onNewRequest} onRequests={() => navigate('requests')} />
+        : section === 'overview' ? <Overview dashboard={dashboard} onMove={moveOnMap} onOpen={openRequest}
+          onNewRequest={onNewRequest} onRequests={() => navigate('requests')} />
         : section === 'requests' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
           onSearch={setSearch} filter={filter} onFilter={setFilter} onNewRequest={onNewRequest} />
         : section === 'stock' ? <StockView dashboard={dashboard} onRestock={() => showAction({ key: 'restock' })} />

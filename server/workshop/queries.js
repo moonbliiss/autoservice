@@ -1,4 +1,4 @@
-import { availableActions } from './rules.js';
+import { availableActions, routingActions } from './rules.js';
 import { requireValue } from './validation.js';
 
 export function createWorkshopQueries({ all, get }) {
@@ -8,7 +8,9 @@ export function createWorkshopQueries({ all, get }) {
     CASE WHEN p.space_id IS NOT NULL THEN 'waiting_parts' ELSE COALESCE(o.status,r.status) END AS status,
     p.space_id AS parking_space, p.reason AS parking_reason, p.expected_date AS parts_expected_date,
     o.mechanic_id, m.name AS mechanic_name, o.bay_id, b.name AS bay_name, o.work_instructions,
-    o.pause_reason, o.eta, o.estimate_version, o.inspection_note, o.intake_note
+    o.pause_reason, o.eta, o.estimate_version, o.inspection_note, o.intake_note,
+    EXISTS(SELECT 1 FROM orders active WHERE active.mechanic_id=o.mechanic_id
+      AND active.bay_id IS NOT NULL AND active.status <> 'paused' AND active.id<>o.id) AS mechanic_busy
     FROM service_requests r JOIN vehicles v ON v.id=r.vehicle_id JOIN accounts c ON c.id=v.client_id
     LEFT JOIN orders o ON o.request_id=r.id LEFT JOIN accounts m ON m.id=o.mechanic_id
     LEFT JOIN bays b ON b.id=o.bay_id LEFT JOIN parking_assignments p ON p.order_id=o.id`;
@@ -48,7 +50,8 @@ export function createWorkshopQueries({ all, get }) {
     return { id, model, plate, status, priority, appointment, created_at, eta, parking_space,
       ...(user.role !== 'client' ? { bay_id } : {}),
       ...(user.role === 'mechanic' ? { assigned_to_me: row.mechanic_id === user.id } : {}),
-      ...(user.role === 'advisor' ? { client_name: row.client_name, mechanic_name: row.mechanic_name } : {}) };
+      ...(user.role === 'advisor' ? { client_name: row.client_name, mechanic_name: row.mechanic_name,
+        routing_actions: routingActions(status) } : {}) };
   }
 
   function details(user, id) {
@@ -78,6 +81,8 @@ export function createWorkshopQueries({ all, get }) {
         : money), history, reports,
       description: row.description, preferred_date: row.preferred_date, mileage: row.mileage,
       parking_reason: row.parking_reason, parts_expected_date: row.parts_expected_date,
+      ...(user.role === 'mechanic' && row.status === 'paused' && row.mechanic_id === user.id
+        ? { resume_blocked: Boolean(row.bay_id && row.mechanic_busy) } : {}),
       visit_note: row.status === 'scheduled' ? history.find(event => event.title === 'Назначен визит')?.note ?? null : null,
       estimate_version: row.estimate_version, actions: availableActions(user, { ...row, ...money }),
       ...(user.role === 'client' ? {} : { order_id: row.order_id, bay_name: row.bay_name, work_instructions: row.work_instructions,

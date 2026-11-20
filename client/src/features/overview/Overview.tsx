@@ -2,13 +2,11 @@ import type { Dashboard } from '../../api/types'
 import { Button, Heading, Metrics, Panel } from '../../shared/ui'
 import { StatusTag, closedStatuses, workshopStatuses } from '../requests/status'
 import { RequestTable, type OpenRequest } from '../requests/RequestTable'
-import { WorkshopFloor } from '../garage/WorkshopFloor'
-import { ParkingLot } from '../garage/ParkingLot'
+import { WorkshopFloor, type MoveRequest } from '../garage/WorkshopFloor'
 import './overview.css'
 
-export function Overview({ dashboard, selectedBay, onSelectBay, onOpen, onNewRequest, onRequests }: {
-  dashboard: Dashboard; selectedBay: number; onSelectBay: (id: number) => void; onOpen: OpenRequest;
-  onNewRequest: () => void; onRequests: () => void
+export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests }: {
+  dashboard: Dashboard; onOpen: OpenRequest; onNewRequest: () => void; onRequests: () => void; onMove: MoveRequest
 }) {
   const { requests, user: { role }, bays = [] } = dashboard
   const ready = requests.filter(row => row.status === 'ready').length
@@ -21,17 +19,16 @@ export function Overview({ dashboard, selectedBay, onSelectBay, onOpen, onNewReq
     ]} />
     <Panel title="История обслуживания"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
   </>
-  const floor = <WorkshopFloor dashboard={dashboard} selectedBay={selectedBay} onOpen={onOpen} onSelectBay={onSelectBay} />
-  const parking = <ParkingLot spaces={dashboard.parking ?? []} visibleRequests={new Set(requests.map(row => row.id))} onOpen={onOpen} />
+  const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove} />
   if (role === 'mechanic') {
-    const active = requests.find(row => workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me)
+    const active = requests.find(row => row.status !== 'paused' && workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me)
     return <>
       <Heading title="Моя смена" subtitle="Текущий пост, задача и результаты работы." eyebrow="КАБИНЕТ МЕХАНИКА" />
       {active ? <Panel inset title={`Ваш пост ${String(active.bay_id).padStart(2, '0')} · ${bays.find(bay => bay.id === active.bay_id)?.name ?? ''}`}>
         <div className="split"><div><strong>{active.model}</strong><p className="muted">{active.plate}</p></div><StatusTag status={active.status} /></div>
         <div className="actions"><Button variant="primary" onClick={() => onOpen(active.id)}>Открыть задачу</Button></div>
       </Panel> : <Panel inset title="Текущий пост"><p className="muted">Активного назначения пока нет.</p></Panel>}
-      <div className="section-gap" />{floor}{parking}
+      <div className="section-gap" />{floor}
       <Panel title="Задачи смены"><RequestTable requests={requests} role={role} onOpen={onOpen} /></Panel>
     </>
   }
@@ -43,7 +40,7 @@ export function Overview({ dashboard, selectedBay, onSelectBay, onOpen, onNewReq
       ['Новые заявки', requests.filter(row => row.status === 'new').length],
       ['Занятые посты', `${bays.filter(bay => bay.status).length} / ${bays.length}`], ['Готовы к выдаче', ready],
     ]} />
-    {floor}{parking}
+    {floor}
     <Panel title="Ждут назначения в цех">
       <RequestTable requests={unassigned} role={role} onOpen={onOpen} assignmentQueue empty="Все принятые автомобили распределены." />
     </Panel>

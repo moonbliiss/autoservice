@@ -1,11 +1,7 @@
+import { garagePosts, parkingDepth, parkingLocations, parkingWidth } from './mapLayout';
+
 export type Point = [number, number, number];
 export interface Face { points: Point[]; color: string; stroke: string | null; center: Point }
-
-export const garagePosts = [
-  { name: 'Диагностика', x: -6.05, color: '#bc4f35' },
-  { name: 'Слесарный пост', x: 0, color: '#66868c' },
-  { name: 'Шиномонтаж', x: 6.05, color: '#c99a46' },
-];
 
 export const ground: Face[] = [];
 export const fixtures: Face[] = [];
@@ -185,11 +181,31 @@ function makeCar(mesh: Face[], x: number, y: number, z: number, color: string) {
   }
 }
 
+function makeParking() {
+  box(ground, 10.4, -.65, -5.85, 18.3, .58, 18.1, '#555b56');
+  flat(ground, 10.41, -.059, -5.84, 18.28, 18.08, '#747c75');
+  flat(ground, 11.6, -.052, .7, 16.8, 5.15, '#646e67');
+  flat(ground, 11.63, -.049, -5.55, 16.68, .34, '#a9aa97');
+  flat(ground, 11.63, -.049, 11.9, 16.68, .2, '#a9aa97');
+  for (let x = 12.55; x < 28; x += 1.45) flat(ground, x, -.045, 3.54, .79, .075, '#c0c4b1');
+  for (const place of parkingLocations) {
+    flat(ground, place.x - parkingWidth / 2, -.04, place.z - parkingDepth / 2,
+      parkingWidth, parkingDepth, '#828981');
+  }
+}
+
 makeBuilding();
-export const geometry = garagePosts.map(post => {
+makeParking();
+
+export const lifts = garagePosts.map(post => {
   const arms: Face[] = [];
-  const model: Face[] = [];
   makeLift(post.x, 0, arms);
-  makeCar(model, post.x, 0, 0, post.color);
-  return { ...post, arms, model };
+  return arms;
+});
+
+const carColors = ['#b74e39', '#5b8385', '#bf954f', '#46679a', '#b1b1a2'];
+export const carModels = carColors.map(color => {
+  const model: Face[] = [];
+  makeCar(model, 0, 0, 0, color);
+  return model;
 });

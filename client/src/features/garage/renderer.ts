@@ -1,220 +1,251 @@
-import type { Bay } from '../../api/types';
-import { fixtures, flat, geometry, ground, type Face, type Point } from './geometry';
+import type { Bay, ParkingSpace } from '../../api/types'
+import { carModels, fixtures, flat, ground, lifts, type Face, type Point } from './geometry'
+import {
+  bayLocations, locationKey, parkingDepth, parkingWidth, sceneLocations, siteBounds,
+  type MapLocation, type SceneLocation,
+} from './mapLayout'
+import { createMotion, motionPose, restPose, type VehicleMotion, type VehiclePose } from './vehicleMotion'
 
-interface Camera { cs: number; sn: number; ce: number; se: number; scale: number; x: number; y: number }
-interface Transition { start: number; entering: boolean }
-export interface MarkerPosition { x: number; y: number; hidden: boolean }
+interface Camera { scale: number; x: number; y: number }
+interface VehicleBounds { place: SceneLocation; left: number; right: number; top: number; bottom: number; depth: number }
+export interface MarkerPosition { place: SceneLocation; x: number; y: number; hidden: boolean }
 
-const initialView = { angle: .43, tilt: .67, zoom: 1 };
-const cameraKeys = new Map([
-  ['ArrowLeft', [-.08, 0]], ['ArrowRight', [.08, 0]],
-  ['ArrowUp', [0, -.08]], ['ArrowDown', [0, .08]],
-]);
+const cs = Math.cos(.34), sn = Math.sin(.34)
+const ce = Math.cos(.71), se = Math.sin(.71)
+const selectedPaint = '#f2ce77'
+const spacePaint = '#dce2d3'
+
+function project([x, y, z]: Point, cam: Camera): Point {
+  const depth = x * sn + z * cs
+  return [cam.x + (x * cs - z * sn) * cam.scale, cam.y + (depth * se - y * ce) * cam.scale, depth * ce + y * se]
+}
+
+const projectedBounds = [siteBounds.left, siteBounds.right].flatMap(x =>
+  [0, 3.5].flatMap(y => [siteBounds.back, siteBounds.front].map(z => project([x, y, z], { x: 0, y: 0, scale: 1 }))),
+)
+const left = Math.min(...projectedBounds.map(point => point[0]))
+const right = Math.max(...projectedBounds.map(point => point[0]))
+const top = Math.min(...projectedBounds.map(point => point[1]))
+const bottom = Math.max(...projectedBounds.map(point => point[1]))
 
 export function mountGarage(
   canvas: HTMLCanvasElement, stage: HTMLElement, onMarkers: (positions: MarkerPosition[]) => void,
 ) {
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  const ctx = context;
-  const view = { ...initialView };
-  const posts = geometry.map(post => ({ ...post, busy: false, transition: null as Transition | null }));
-  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  let selected = 0;
-  let frame = 0;
-  let viewport = { width: 0, height: 0 };
-  let receivedBays = false;
+  const context = canvas.getContext('2d')
+  if (!context) return null
+  const ctx = context
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)')
+  let zoom = 1
+  let frame = 0
+  let viewport = { width: 0, height: 0 }
+  let markersChanged = true
+  let selectedKey: string | undefined
+  let destinations = new Set<string>()
+  let vehicles = new Map<number, SceneLocation>()
+  let hitVehicles: VehicleBounds[] = []
+  const motions = new Map<number, VehicleMotion[]>()
 
   function camera(): Camera {
-    return {
-      cs: Math.cos(view.angle), sn: Math.sin(view.angle),
-      ce: Math.cos(view.tilt), se: Math.sin(view.tilt),
-      scale: Math.min(viewport.width / 24.4, viewport.height / 17.3) * view.zoom,
-      x: viewport.width * .50, y: viewport.height * .51,
-    };
+    const { width, height } = viewport
+    const scale = Math.min((width - Math.min(46, width * .09)) / (right - left), (height - 58) / (bottom - top)) * zoom
+    return { scale, x: width * .5 - (left + right) * scale / 2, y: height * .52 - (top + bottom) * scale / 2 }
   }
 
-  function project([x, y, z]: Point, cam: Camera): Point {
-    const distance = x * cam.sn + z * cam.cs;
-    return [
-      cam.x + (x * cam.cs - z * cam.sn) * cam.scale,
-      cam.y + (distance * cam.se - y * cam.ce) * cam.scale,
-      distance * cam.ce + y * cam.se,
-    ];
+  function transform([x, y, z]: Point, pose: VehiclePose): Point {
+    const sine = Math.sin(pose.yaw)
+    const cosine = Math.cos(pose.yaw)
+    return [pose.x + x * cosine + z * sine, y + pose.lift, pose.z - x * sine + z * cosine]
   }
 
-  function drawFace(face: Face, cam: Camera, lift = 0, travel = 0) {
-    ctx.beginPath();
-    for (const [index, [x,y,z]] of face.points.entries()) {
-      const [px,py] = project([x, y + lift, z + travel], cam);
-      if (index === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.fillStyle = face.color;
-    ctx.fill();
-    ctx.strokeStyle = face.stroke || face.color;
-    ctx.lineWidth = face.stroke ? Math.max(1, cam.scale / 28) : .45;
-    ctx.stroke();
+  function drawFace(face: Face, cam: Camera, pose?: VehiclePose) {
+    ctx.beginPath()
+    face.points.forEach((point, index) => {
+      const [x, y] = project(pose ? transform(point, pose) : point, cam)
+      if (index === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.closePath()
+    ctx.fillStyle = face.color
+    ctx.fill()
+    ctx.strokeStyle = face.stroke || face.color
+    ctx.lineWidth = face.stroke ? Math.max(1, cam.scale / 28) : .45
+    ctx.stroke()
   }
 
-  function drawShadow(cam: Camera, x: number, z: number, width: number, depth: number, opacity: number) {
-    const [px,py] = project([x, -.013, z], cam);
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.scale(width * cam.scale, depth * cam.scale * cam.se);
-    const gradient = ctx.createRadialGradient(0, 0, .26, 0, 0, 1);
-    gradient.addColorStop(0, `rgba(35,42,33,${opacity})`);
-    gradient.addColorStop(1, 'rgba(35,42,33,0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(-1, -1, 2, 2);
-    ctx.restore();
+  function drawShadow(cam: Camera, pose: VehiclePose) {
+    const [x, y] = project([pose.x, 0, pose.z], cam)
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(1.85 * cam.scale, 2.2 * cam.scale * se)
+    const gradient = ctx.createRadialGradient(0, 0, .18, 0, 0, 1)
+    gradient.addColorStop(0, 'rgba(29,37,30,.38)')
+    gradient.addColorStop(1, 'rgba(29,37,30,0)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(-1, -1, 2, 2)
+    ctx.restore()
   }
 
   function drawMarkings(cam: Camera) {
-    const markings: Face[] = [];
-    for (const [index, post] of posts.entries()) {
-      const x = post.x;
-      const active = index === selected;
-      const paint = active ? '#f4d78c' : '#dedbd0';
-      if (active) flat(markings, x - 2.55, .014, -3.55, 5.1, 7.82, '#b5b39e');
-      flat(markings, x - 2.55, .02, -3.55, .075, 7.82, paint);
-      flat(markings, x + 2.47, .02, -3.55, .075, 7.82, paint);
-      flat(markings, x - 2.55, .02, -3.55, 5.1, .075, paint);
-      for (let i = 0; i < 8; i++) flat(markings, x - 2.5 + i * .65, .021, 4.19, .39, .075, paint);
+    const markings: Face[] = []
+    for (const place of sceneLocations) {
+      const key = locationKey(place)
+      const active = key === selectedKey
+      const target = destinations.has(key)
+      const bay = place.kind === 'bay'
+      const x = place.x - (bay ? 2.55 : parkingWidth / 2)
+      const z = bay ? -3.53 : place.z - parkingDepth / 2
+      const w = bay ? 5.1 : parkingWidth
+      const d = bay ? 7.72 : parkingDepth
+      const paint = active ? selectedPaint : target ? '#a8e0bd' : spacePaint
+      if (active || target) flat(markings, x, .015, z, w, d, active ? '#a6a087' : '#778f7f')
+      flat(markings, x, .02, z, .075, d, paint)
+      flat(markings, x + w - .075, .02, z, .075, d, paint)
+      flat(markings, x, .02, z, w, .075, paint)
+      flat(markings, x, .02, z + d - .075, w, .075, paint)
     }
-    markings.forEach(face => drawFace(face, cam));
-    ctx.font = '800 1px "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const [ux,uy] = project([1,.024,0], cam);
-    const [vx,vy] = project([0,.024,1], cam);
-    const [ox,oy] = project([0,.024,0], cam);
-    for (const [index, post] of posts.entries()) {
-      const [x,y] = project([post.x,.024,4.92], cam);
-      ctx.save();
-      ctx.transform(ux-ox,uy-oy,vx-ox,vy-oy,x,y);
-      ctx.fillStyle = index === selected ? '#f8e3a8' : '#e0dfd2';
-      ctx.fillText(`0${index+1}`, 0, 0);
-      ctx.restore();
-    }
+    markings.forEach(face => drawFace(face, cam))
+  }
+
+  function drawRoute(cam: Camera, motion: VehicleMotion) {
+    ctx.save()
+    ctx.beginPath()
+    motion.path.forEach(({ x, z }, index) => {
+      const [px, py] = project([x, .03, z], cam)
+      if (index === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    })
+    ctx.strokeStyle = '#e9bd61'
+    ctx.lineWidth = Math.max(2, cam.scale * .14)
+    ctx.setLineDash([6, 5])
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  function activeMotion(id: number, now: number) {
+    const queue = motions.get(id)
+    if (!queue) return undefined
+    while (queue[0] && now >= queue[0].ends) queue.shift()
+    if (!queue.length) motions.delete(id)
+    return queue[0]
   }
 
   function draw(now: number) {
-    frame = 0;
-    const cam = camera();
-    ctx.clearRect(0, 0, viewport.width, viewport.height);
-    drawShadow(cam, .32, 1.0, 12.5, 9.8, .25);
-    ground.forEach(face => drawFace(face, cam));
-    drawMarkings(cam);
-    const visible: { face: Face; lift: number; travel: number; depth: number }[] = [];
-    const markers: MarkerPosition[] = [];
-    const add = (geometry: Face[], lift = 0, travel = 0) => {
-      for (const face of geometry) {
-        const [x,y,z] = face.center;
-        const depth = (x * cam.sn + (z + travel) * cam.cs) * cam.ce + (y + lift) * cam.se;
-        visible.push({ face, lift, travel, depth });
+    frame = 0
+    const cam = camera()
+    ctx.clearRect(0, 0, viewport.width, viewport.height)
+    ground.forEach(face => drawFace(face, cam))
+    drawMarkings(cam)
+    const visible: { face: Face; pose?: VehiclePose; depth: number }[] = []
+    const heights = new Map<number, number>()
+    hitVehicles = []
+    const add = (faces: Face[], pose?: VehiclePose) => {
+      for (const face of faces) {
+        const [x, y, z] = pose ? transform(face.center, pose) : face.center
+        visible.push({ face, pose, depth: (x * sn + z * cs) * ce + y * se })
       }
-    };
-    add(fixtures);
-    for (const post of posts) {
-      let travel = 0;
-      let occupancy = Number(post.busy);
-      if (post.transition) {
-        const { start, entering } = post.transition;
-        const progress = Math.max(0, Math.min((now - start) / 1100, 1));
-        const eased = progress * progress * (3 - 2 * progress);
-        occupancy = entering ? eased : 1 - eased;
-        travel = (1 - occupancy) * 9;
-        if (progress === 1) post.transition = null;
-        else scheduleDraw();
-      }
-      const lift = Math.max(0, occupancy - .56) * 1.45;
-      if (post.busy || post.transition) {
-        drawShadow(cam, post.x, travel, 1.63, 2.65, .31);
-        add(post.model, lift, travel);
-      }
-      add(post.arms, lift);
-      const [x,y] = project([post.x, .18, 3.14], cam);
-      markers.push({ x, y, hidden: x < 18 || y < 35 || x > viewport.width - 18 || y > viewport.height - 48 });
     }
-    visible.sort((a,b) => a.depth - b.depth);
-    visible.forEach(({ face, lift, travel }) => drawFace(face, cam, lift, travel));
-    onMarkers(markers);
+    add(fixtures)
+    for (const [id, place] of vehicles) {
+      const motion = activeMotion(id, now)
+      if (motion) drawRoute(cam, motion)
+      const pose = motion ? motionPose(motion, now) : restPose(place)
+      const bay = bayLocations.find(post => Math.abs(post.x - pose.x) < .01 && Math.abs(post.z - pose.z) < .01)
+      if (bay) heights.set(bay.id, pose.lift)
+      drawShadow(cam, pose)
+      add(carModels[id % carModels.length], pose)
+      const projected = [-1.12, 1.12].flatMap(x => [0, 1.48].flatMap(y => [-2.14, 2.14].map(z =>
+        project(transform([x, y, z], pose), cam),
+      )))
+      hitVehicles.push({
+        place, left: Math.min(...projected.map(point => point[0])), right: Math.max(...projected.map(point => point[0])),
+        top: Math.min(...projected.map(point => point[1])), bottom: Math.max(...projected.map(point => point[1])),
+        depth: project([pose.x, 0, pose.z], cam)[2],
+      })
+    }
+    for (const bay of bayLocations) add(lifts[bay.id - 1], { x: 0, z: 0, yaw: 0, lift: heights.get(bay.id) ?? 0 })
+    visible.sort((a, b) => a.depth - b.depth)
+    for (const { face, pose } of visible) drawFace(face, cam, pose)
+    if (markersChanged) {
+      markersChanged = false
+      onMarkers(sceneLocations.map(place => {
+        const z = place.kind === 'bay' ? 4.4 : place.z + (place.id <= 5 ? -2 : 2.3)
+        const [x, y] = project([place.x, .02, z], cam)
+        return { place, x, y, hidden: x < 12 || y < 22 || x > viewport.width - 12 || y > viewport.height - 4 }
+      }))
+    }
+    if (motions.size) scheduleDraw()
   }
 
   function scheduleDraw() {
-    if (!frame && viewport.width && viewport.height) frame = requestAnimationFrame(draw);
+    if (!frame && viewport.width > 46 && viewport.height > 58) frame = requestAnimationFrame(draw)
   }
 
   function resize() {
-    const { width, height } = stage.getBoundingClientRect();
-    const ratio = Math.min(devicePixelRatio || 1, 2);
-    viewport = { width, height };
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(height * ratio);
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    scheduleDraw();
+    const { width, height } = stage.getBoundingClientRect()
+    const ratio = Math.min(devicePixelRatio || 1, 2)
+    viewport = { width, height }
+    canvas.width = Math.round(width * ratio)
+    canvas.height = Math.round(height * ratio)
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+    markersChanged = true
+    scheduleDraw()
   }
 
-  function zoomBy(amount: number) {
-    view.zoom = Math.max(.71, Math.min(1.65, view.zoom * amount));
-    scheduleDraw();
-  }
-
-
-  let dragging: { id: number; x: number; y: number; angle: number; tilt: number } | null = null;
-  function rotateTo(angle: number, tilt: number) {
-    view.angle = Math.max(.10, Math.min(.81, angle));
-    view.tilt = Math.max(.44, Math.min(1.1, tilt));
-    scheduleDraw();
-  }
-
-  const events = new AbortController();
-  const options = { signal: events.signal };
-  canvas.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || !event.isPrimary) return;
-    canvas.setPointerCapture(event.pointerId);
-    dragging = { id: event.pointerId, x: event.clientX, y: event.clientY, ...view };
-  }, options);
-  canvas.addEventListener('pointermove', event => {
-    if (event.pointerId !== dragging?.id) return;
-    rotateTo(dragging.angle + (event.clientX - dragging.x) * .005,
-      dragging.tilt + (event.clientY - dragging.y) * .005);
-  }, options);
-  canvas.addEventListener('lostpointercapture', event => {
-    if (event.pointerId === dragging?.id) dragging = null;
-  }, options);
-  canvas.addEventListener('keydown', event => {
-    const step = cameraKeys.get(event.key);
-    if (!step) return;
-    event.preventDefault();
-    rotateTo(view.angle + step[0], view.tilt + step[1]);
-  }, options);
-  const observer = new ResizeObserver(resize);
-  observer.observe(stage);
+  const observer = new ResizeObserver(resize)
+  observer.observe(stage)
 
   return {
-    zoomBy,
-    reset() {
-      Object.assign(view, initialView);
-      scheduleDraw();
+    zoomBy(factor: number) {
+      zoom = Math.max(.85, Math.min(1.45, zoom * factor))
+      markersChanged = true
+      scheduleDraw()
     },
-    update(bays: readonly Bay[], selectedId: number) {
-      for (const [index, post] of posts.entries()) {
-        const busy = Boolean(bays.find(bay => bay.id === index + 1)?.status);
-        if (busy === post.busy) continue;
-        post.transition = receivedBays && !reduceMotion.matches ? { start: performance.now(), entering: busy } : null;
-        post.busy = busy;
+    reset() {
+      zoom = 1
+      markersChanged = true
+      scheduleDraw()
+    },
+    pick(px: number, py: number) {
+      const car = hitVehicles.filter(hit => px >= hit.left && px <= hit.right && py >= hit.top && py <= hit.bottom)
+        .sort((a, b) => b.depth - a.depth)[0]
+      if (car) return car.place
+      const cam = camera()
+      const across = (px - cam.x) / cam.scale
+      const depth = (py - cam.y) / (cam.scale * se)
+      const x = across * cs + depth * sn
+      const z = depth * cs - across * sn
+      return sceneLocations.find(place => place.kind === 'bay'
+        ? Math.abs(x - place.x) <= 2.55 && z >= -3.53 && z <= 4.19
+        : Math.abs(x - place.x) <= parkingWidth / 2 && Math.abs(z - place.z) <= parkingDepth / 2)
+    },
+    update(bays: readonly Bay[], parking: readonly ParkingSpace[], selected: MapLocation | null, targets: string[]) {
+      const next = new Map<number, SceneLocation>()
+      for (const place of sceneLocations) {
+        const entries = place.kind === 'bay' ? bays : parking
+        const id = entries.find(entry => entry.id === place.id)?.request_id
+        if (id != null) next.set(id, place)
       }
-      receivedBays = true;
-      selected = selectedId - 1;
-      scheduleDraw();
+      const now = performance.now()
+      if (reduceMotion.matches) motions.clear()
+      else {
+        for (const [id, place] of next) {
+          const from = vehicles.get(id)
+          if (!from || from === place) continue
+          const queue = motions.get(id) ?? []
+          const starts = Math.max(queue.at(-1)?.ends ?? now, now)
+          queue.push(createMotion(from, place, starts))
+          motions.set(id, queue)
+        }
+        for (const id of motions.keys()) if (!next.has(id)) motions.delete(id)
+      }
+      vehicles = next
+      selectedKey = selected ? locationKey(selected) : undefined
+      destinations = new Set(targets)
+      scheduleDraw()
     },
     destroy() {
-      observer.disconnect();
-      events.abort();
-      cancelAnimationFrame(frame);
+      observer.disconnect()
+      cancelAnimationFrame(frame)
     },
-  };
+  }
 }

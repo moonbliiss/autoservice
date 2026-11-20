@@ -54,7 +54,9 @@ CREATE TABLE IF NOT EXISTS orders (
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS active_bay ON orders(bay_id) WHERE bay_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS active_mechanic ON orders(mechanic_id) WHERE bay_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS active_mechanic_working ON orders(mechanic_id)
+  WHERE bay_id IS NOT NULL AND status <> 'paused';
+DROP INDEX IF EXISTS active_mechanic;
 
 CREATE TABLE IF NOT EXISTS parking_spaces (
   id INTEGER PRIMARY KEY CHECK (id BETWEEN 1 AND 10)

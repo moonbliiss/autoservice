@@ -11,7 +11,7 @@ export function RequestTable({ requests, role, onOpen, empty = 'Нет заяв�
   const advisor = role === 'advisor'
   const mechanic = role === 'mechanic'
   return <Table headings={['Заявка', 'Автомобиль', ...(advisor ? ['Клиент'] : []), 'Статус', mechanic ? 'Расположение' : 'Визит / расположение']}
-    rows={requests.map(row => ({ key: row.id, cells: [
+    rows={requests.map(row => ({ key: row.id, onClick: () => onOpen(row.id), cells: [
       <Button variant="table-link" onClick={() => onOpen(row.id)}>
         {code(row.id)}{assignmentQueue && ' · Назначить задачу'}
       </Button>,
