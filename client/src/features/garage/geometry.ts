@@ -131,13 +131,13 @@ function makeBench(x: number) {
   box(fixtures, x + .58, .95, -4.58, .30, .21, .36, '#d4ae62');
 }
 
-function makeLift(x: number, y: number, mesh: Face[], columns = fixtures) {
+function makeLift(x: number, y: number, mesh: Face[]) {
   for (const side of [-1, 1]) {
     const column = x + side * 1.74;
-    box(columns, column - .27, .02, -.32, .54, .10, .66, '#4a5046');
-    box(columns, column - .14, .12, -.16, .28, 2.42, .34, '#bb8844');
-    box(columns, column - .17, 2.50, -.19, .34, .12, .40, '#4c5449');
-    box(columns, column - .07, .6, .185, .14, 1.62, .025, '#5b6668');
+    box(fixtures, column - .27, .02, -.32, .54, .10, .66, '#4a5046');
+    box(fixtures, column - .14, .12, -.16, .28, 2.42, .34, '#bb8844');
+    box(fixtures, column - .17, 2.50, -.19, .34, .12, .40, '#4c5449');
+    box(fixtures, column - .07, .6, .185, .14, 1.62, .025, '#5b6668');
     const inward = x + side * .96;
     box(mesh, Math.min(column, inward), y + .12, -.12, Math.abs(column - inward), .12, .26, '#9c6f44');
     box(mesh, inward - .075, y + .12, -.90, .15, .09, 1.80, '#b47f49');
@@ -317,71 +317,3 @@ export const carModels = carColors.map(color => {
   makeCar(model, 0, 0, 0, color);
   return model;
 });
-
-export function makeCustomGeometry(
-  areas: import('./siteDesign').LayoutArea[],
-  places: import('./mapLayout').SceneLocation[],
-  bounds: typeof siteBounds,
-  driveway: number,
-) {
-  const floor: Face[] = [];
-  const objects: Face[] = [];
-  const movingLifts = new Map<number, Face[]>();
-  const { left, right, back, front } = bounds;
-  box(floor, left, -.84, back, right - left, .66, front - back, '#74857a');
-  flat(floor, left, -.16, back, right - left, front - back, '#adb9ad');
-  flat(floor, driveway - 2, -.045, back + .18, 4, front - back - .36, asphalt);
-  flat(floor, driveway + 1.82, -.041, back + .18, .075, front - back - .36, '#dce1dd');
-  for (const area of areas) {
-    const { x, z, width, depth, kind } = area;
-    const edge = x + width;
-    const end = z + depth;
-    const isParking = kind === 'service' || kind === 'arrival';
-    const isWorkshop = kind === 'workshop';
-    if (isParking || isWorkshop) {
-      const aisle = end - (isWorkshop ? 3 : 1.9);
-      flat(floor, edge, -.044, aisle - (isWorkshop ? 2.45 : 1.9),
-        driveway - edge, isWorkshop ? 4.9 : 3.8, asphalt);
-    }
-    const color = isParking ? asphalt : isWorkshop ? concrete : kind === 'warehouse' ? '#b8c6bd' : '#ddd9ca';
-    box(floor, x, -.25, z, width, .25, depth, '#84938a');
-    flat(floor, x, .004, z, width, depth, color);
-    if (isParking) continue;
-    box(objects, x, 0, z, width, 2.7, .23, wall);
-    box(objects, x, 2.7, z - .03, width, .12, .29, trim);
-    box(objects, x, 0, z + .23, .22, 2.7, Math.min(depth - .23, 4.6), wall);
-    if (isWorkshop) {
-      const gateBack = end - 5.45, gateFront = end - .55;
-      flat(floor, x + .22, .01, gateBack, width - .22, gateFront - gateBack, '#a4afae');
-      box(objects, edge - .27, 0, z + .23, .27, .83, gateBack - z - .23, wall);
-      box(objects, edge - .27, 0, gateFront, .27, .83, end - gateFront, wall);
-      box(objects, x, 0, end - .14, width, .17, .14, '#899993');
-      for (const postZ of [gateBack - .25, gateFront]) box(objects, edge - .5, 0, postZ, .5, 2.85, .25, trim);
-      box(objects, edge - .5, 2.85, gateBack - .25, .5, .235, gateFront - gateBack + .5, trim);
-      for (const place of places.filter(item => item.kind === 'bay')) {
-        const arms: Face[] = [];
-        const columns: Face[] = [];
-        makeLift(place.x, 0, arms, columns);
-        const shift = ({ points, center, ...face }: Face): Face => ({
-          ...face, points: points.map(([px, py, pz]) => [px, py, pz + place.z]),
-          center: [center[0], center[1], center[2] + place.z],
-        });
-        objects.push(...columns.map(shift));
-        movingLifts.set(place.id, arms.map(shift));
-        box(objects, place.x - 1.35, .1, z + .75, 2.7, .84, .6, '#788274');
-      }
-    } else if (kind === 'warehouse') {
-      for (const level of [.3, .9, 1.5]) {
-        box(objects, x + .37, level, z + .44, Math.min(width - .75, 4.5), .11, .66, '#64796a');
-        box(objects, x + .49, level + .11, z + .49, .68, .42, .53, '#be925d');
-        box(objects, x + 1.39, level + .11, z + .49, .65, .37, .52, '#a4a981');
-      }
-      box(objects, edge - 2.05, 0, end - 1.2, 1.75, .95, .86, '#c7a579');
-    } else {
-      box(objects, x + .45, 0, z + .53, 1.64, .48, .75, '#8e6049');
-      box(objects, edge - 2.03, 0, end - 1.23, 1.73, .95, .84, '#a7825d');
-      box(objects, edge - 1.42, .95, end - 1.1, .63, .43, .13, trim);
-    }
-  }
-  return { ground: floor, fixtures: objects, lifts: movingLifts };
-}

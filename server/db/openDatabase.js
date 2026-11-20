@@ -30,36 +30,11 @@ function migrateAccountRoles(db) {
   }
 }
 
-function migrateParkingLimits(db) {
-  const tables = [
-    ['parking_spaces', 'id INTEGER PRIMARY KEY'],
-    ['arrival_parking', 'space_id INTEGER PRIMARY KEY, request_id INTEGER NOT NULL UNIQUE REFERENCES service_requests(id)'],
-  ].filter(([name]) => db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name=?").get(name).sql.includes('BETWEEN'));
-  if (!tables.length) return;
-  db.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE');
-  try {
-    for (const [name, columns] of tables) {
-      db.exec(`CREATE TABLE ${name}_new (${columns}) STRICT;
-        INSERT INTO ${name}_new SELECT * FROM ${name};
-        DROP TABLE ${name};
-        ALTER TABLE ${name}_new RENAME TO ${name};`);
-    }
-    if (db.prepare('PRAGMA foreign_key_check').get()) throw new Error('Нарушены связи с парковочными местами.');
-    db.exec('COMMIT');
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  } finally {
-    db.exec('PRAGMA foreign_keys=ON');
-  }
-}
-
 export function openDatabase(file) {
   const db = new DatabaseSync(file);
   try {
     db.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
     migrateAccountRoles(db);
-    migrateParkingLimits(db);
   } catch (error) {
     db.close();
     throw error;

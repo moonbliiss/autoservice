@@ -43,9 +43,8 @@ function AdvisorRequests({ requests, onOpen }: { requests: RequestSummary[]; onO
   </div>
 }
 
-export function Overview({ dashboard, onMove, onOpen, onNewRequest, onNewArrival, onConfigure, onRequests, onStock, onCompleteTransfer, submitting }: {
+export function Overview({ dashboard, onMove, onOpen, onNewRequest, onNewArrival, onRequests, onStock, onCompleteTransfer, submitting }: {
   dashboard: Dashboard; onOpen: OpenRequest; onNewRequest: () => void; onRequests: () => void; onMove: MoveRequest; onStock: () => void;
-  onConfigure?: () => void;
   onNewArrival: (place: number) => void;
   onCompleteTransfer: (row: RequestSummary) => void; submitting: boolean
 }) {
@@ -62,7 +61,6 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onNewArrival
   </>
   const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove}
     onOpenStock={role === 'advisor' || role === 'manager' ? onStock : undefined}
-    onConfigure={role === 'advisor' ? onConfigure : undefined}
     onNewRequest={role === 'advisor' ? onNewRequest : undefined} onNewArrival={role === 'advisor' ? onNewArrival : undefined}
     queues={role === 'advisor' && requests.some(row => !closedStatuses.has(row.status))
       ? <AdvisorRequests requests={requests} onOpen={onOpen} /> : undefined} />
@@ -90,8 +88,7 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onNewArrival
     </>
   }
   return <>
-    <Heading title="Обзор автосервиса" subtitle="Загрузка цеха и движение заказов" eyebrow="КАБИНЕТ УПРАВЛЯЮЩЕГО"
-      action={onConfigure && <Button variant="primary" onClick={onConfigure}>Настроить схему</Button>} />
+    <Heading title="Обзор автосервиса" subtitle="Загрузка цеха и движение заказов" eyebrow="КАБИНЕТ УПРАВЛЯЮЩЕГО" />
     <Metrics items={[
       ['Новые заявки', requests.filter(row => row.status === 'new').length],
       ['Занятые посты', `${bays.filter(bay => bay.status).length} / ${bays.length}`], ['Готовы к выдаче', ready],

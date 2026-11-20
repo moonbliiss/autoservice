@@ -83,8 +83,7 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
     case 'arrivalPark': {
       const occupied = new Set(dashboard.requests.filter(request => request.id !== row.id).map(request => request.arrival_space))
       return <SelectField label="Клиентская стоянка" name="arrival_space" defaultValue={row.arrival_space ?? ''}
-        options={ [['', 'Выберите место'], ...(dashboard.layout?.areas?.filter(area => area.kind === 'arrival')
-          .flatMap(area => area.slots) ?? arrivalLocations).filter(place => !occupied.has(place.id))
+        options={ [['', 'Выберите место'], ...arrivalLocations.filter(place => !occupied.has(place.id))
           .map((place): Option => [place.id, `Место ${place.id}`])] } />
     }
     case 'leaveArrival': return <>

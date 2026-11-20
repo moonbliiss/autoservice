@@ -2,7 +2,6 @@ import { ActionDialog } from '../features/actions/ActionDialog'
 import { StockView } from '../features/inventory/StockView'
 import { WarehouseDesk } from '../features/inventory/WarehouseNeeds'
 import { DirectoryView } from '../features/management/DirectoryView'
-import { LayoutEditor } from '../features/layout/LayoutEditor'
 import { Overview } from '../features/overview/Overview'
 import { RequestDetails } from '../features/requests/RequestDetails'
 import { RequestList } from '../features/requests/RequestList'
@@ -16,7 +15,7 @@ export function App() {
   const {
     dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction, formError, notice, busy, submitting,
-    changeProfile, changePresence, refreshLayout, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
+    changeProfile, changePresence, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
   } = useWorkshop()
   const onNewRequest = (vehicleId?: number) => showAction({ key: 'newRequest', vehicleId })
 
@@ -37,9 +36,6 @@ export function App() {
               quantity: need.approved_remaining - need.stock - need.incoming })} />
           : <Overview dashboard={dashboard} onMove={moveOnMap} onOpen={openRequest}
             onNewRequest={onNewRequest} onNewArrival={arrivalSpace => showAction({ key: 'newRequest', arrivalSpace })}
-            onConfigure={dashboard.layout === null && dashboard.user.role === 'advisor'
-              ? () => { void changeProfile('manager', 'layout') }
-              : dashboard.layout === null && dashboard.user.role === 'manager' ? () => navigate('layout') : undefined}
             onRequests={() => navigate('requests')} onStock={() => navigate('stock')}
             onCompleteTransfer={completeTransfer} submitting={submitting} />)
         : section === 'requests' || section === 'archive' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
@@ -47,8 +43,6 @@ export function App() {
         : section === 'stock' ? <StockView dashboard={dashboard} onRestock={() => showAction({ key: 'restock' })}
           onOrder={partId => showAction({ key: 'orderSupply', partId })}
           onReceive={supply => showAction({ key: 'receiveSupply', supply })} onOpenRequest={openRequest} />
-        : section === 'layout' && dashboard.user.role === 'manager'
-          ? <LayoutEditor layout={dashboard.layout ?? null} onSaved={refreshLayout} />
         : section === 'directory' ? <DirectoryView dashboard={dashboard} />
         : <CarsView dashboard={dashboard} onNewRequest={onNewRequest} />}
     </AppShell>

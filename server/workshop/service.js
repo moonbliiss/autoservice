@@ -4,7 +4,6 @@ import { createWorkshopQueries } from './queries.js';
 import { createWorkshopMutations } from './mutations.js';
 import { createInventory } from './inventory.js';
 import { createWorkTime } from './workTime.js';
-import { createLayoutStore } from './layout.js';
 import { requireValue } from './validation.js';
 
 const accounts = { advisor: 1, mechanic: 2, client: 3, client2: 4, mechanic2: 5 };
@@ -19,11 +18,10 @@ export function openWorkshop(file, { now = Date.now } = {}) {
     }
     return null;
   };
-  const layout = createLayoutStore(database);
   const inventory = createInventory(database);
   const workTime = createWorkTime(database, now);
-  const queries = createWorkshopQueries(database, inventory, workTime, layout);
-  const mutations = createWorkshopMutations(database, queries, account, workTime, layout);
+  const queries = createWorkshopQueries(database, inventory, workTime);
+  const mutations = createWorkshopMutations(database, queries, account, workTime);
   database.transaction(() => {
     seedWorkshop(database, { account, ...mutations });
     workTime.restoreRunning();
@@ -41,5 +39,5 @@ export function openWorkshop(file, { now = Date.now } = {}) {
       ON CONFLICT(account_id) DO UPDATE SET status=excluded.status`, user.id, status);
     return { status };
   }
-  return { profile, list, details, dashboard, tracking, setPresence, saveLayout: layout.save, ...mutations, restock, orderSupply, receiveSupply, issueParts, close: database.close };
+  return { profile, list, details, dashboard, tracking, setPresence, ...mutations, restock, orderSupply, receiveSupply, issueParts, close: database.close };
 }

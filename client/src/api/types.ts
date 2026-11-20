@@ -1,5 +1,3 @@
-import type { SavedLayout } from '../features/garage/siteDesign'
-
 export type Role = 'advisor' | 'mechanic' | 'client' | 'stockkeeper' | 'manager'
 export type PresenceStatus = 'present' | 'away'
 export interface StaffPresence {
@@ -169,7 +167,6 @@ export interface WarehouseNeed {
 }
 
 export interface Dashboard {
-  layout?: SavedLayout | null
   user: { id: number; role: Role; name: string }
   requests: RequestSummary[]
   vehicles?: { id: number; client_id?: number; model: string; plate: string; mileage: number | null }[]

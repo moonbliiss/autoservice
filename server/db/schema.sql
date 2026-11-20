@@ -43,14 +43,8 @@ CREATE TABLE IF NOT EXISTS request_tracking (
   token TEXT NOT NULL UNIQUE
 ) STRICT;
 
-CREATE TABLE IF NOT EXISTS workshop_layout (
-  id INTEGER PRIMARY KEY CHECK (id=1),
-  revision INTEGER NOT NULL,
-  configuration TEXT
-) STRICT;
-
 CREATE TABLE IF NOT EXISTS arrival_parking (
-  space_id INTEGER PRIMARY KEY,
+  space_id INTEGER PRIMARY KEY CHECK (space_id BETWEEN 1 AND 5),
   request_id INTEGER NOT NULL UNIQUE REFERENCES service_requests(id)
 ) STRICT;
 
@@ -75,12 +69,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS active_mechanic_working ON orders(mechanic_id)
 DROP INDEX IF EXISTS active_mechanic;
 
 CREATE TABLE IF NOT EXISTS parking_spaces (
-  id INTEGER PRIMARY KEY
+  id INTEGER PRIMARY KEY CHECK (id BETWEEN 1 AND 10)
 ) STRICT;
 
-INSERT OR IGNORE INTO parking_spaces(id)
-SELECT value FROM json_each('[1,2,3,4,5,6,7,8,9,10]')
-WHERE NOT EXISTS (SELECT 1 FROM workshop_layout WHERE configuration IS NOT NULL);
+INSERT OR IGNORE INTO parking_spaces(id) VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10);
 
 CREATE TABLE IF NOT EXISTS parking_assignments (
   order_id INTEGER PRIMARY KEY REFERENCES orders(id),

@@ -23,14 +23,12 @@ const aisles: Record<SceneLocation['kind'], number> = { bay: workshopAisle, park
 
 export const restPose = (place: SceneLocation): VehiclePose => ({ ...place, lift: place.kind === 'bay' ? .67 : 0 })
 
-const aisleOf = (place: SceneLocation) => place.aisle ?? aisles[place.kind]
-
-function travelPath(from: SceneLocation, to: SceneLocation, driveway: number) {
-  const fromAisle = aisleOf(from)
-  const toAisle = aisleOf(to)
+function travelPath(from: SceneLocation, to: SceneLocation) {
+  const fromAisle = aisles[from.kind]
+  const toAisle = aisles[to.kind]
   const waypoints = [from, { x: from.x, z: fromAisle }]
   if (fromAisle !== toAisle) waypoints.push(
-    { x: driveway, z: fromAisle }, { x: driveway, z: toAisle },
+    { x: parkingEntrance, z: fromAisle }, { x: parkingEntrance, z: toAisle },
   )
   waypoints.push({ x: to.x, z: toAisle }, to)
   const distinct = waypoints.filter((point, index) => index === 0 || distance(waypoints[index - 1], point) > .01)
@@ -51,8 +49,8 @@ function travelPath(from: SceneLocation, to: SceneLocation, driveway: number) {
   return path
 }
 
-export function createMotion(from: SceneLocation, to: SceneLocation, starts: number, driveway = parkingEntrance): VehicleMotion {
-  const path = travelPath(from, to, driveway)
+export function createMotion(from: SceneLocation, to: SceneLocation, starts: number): VehicleMotion {
+  const path = travelPath(from, to)
   const distances = [0]
   for (let i = 1; i < path.length; i++) distances.push(distances[i - 1] + distance(path[i - 1], path[i]))
   const travelTime = Math.max(850, Math.min(2500, distances.at(-1)! * 84))
@@ -82,8 +80,8 @@ export function motionPose(motion: VehicleMotion, now: number): VehiclePose {
   const behind = positionAt(motion, travelled - .32)
   const heading = Math.atan2(ahead.x - behind.x, ahead.z - behind.z)
   const position = positionAt(motion, travelled)
-  const fromTurn = Math.abs(from.z - aisleOf(from)) + .85
-  const toTurn = Math.abs(to.z - aisleOf(to)) + .85
+  const fromTurn = Math.abs(from.z - aisles[from.kind]) + .85
+  const toTurn = Math.abs(to.z - aisles[to.kind]) + .85
   let yaw = heading
   if (from.kind !== 'bay') yaw = angle(from.yaw, yaw, ease(clamp((travelled - fromTurn + 1.65) / 1.65)))
   if (to.kind === 'bay') yaw = angle(to.yaw, yaw, ease(clamp((length - travelled - toTurn + 1.65) / 1.65)))

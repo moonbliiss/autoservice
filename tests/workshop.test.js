@@ -569,37 +569,3 @@ test('клиентская стоянка отмечает приезд и ос�
   move(created.id, 4);
   assert.equal(workshop.action(advisor, created.id, 'cancel', {}).arrival_space, null);
 });
-
-test('управляющий публикует схему и добавляет места, занятые зоны и версии защищены', t => {
-  const workshop = openWorkshop(':memory:');
-  t.after(() => workshop.close());
-  const manager = workshop.profile('manager');
-  const advisor = workshop.profile('advisor');
-  const mechanic = workshop.profile('mechanic2');
-  const areas = [
-    { id: 'shop', kind: 'workshop', name: 'Цех', x: -10, z: 0, width: 28, depth: 15,
-      slots: [{ id: 1, name: 'Диагностика' }, { id: 2, name: 'Ремонт' }, { id: 4, name: 'Новый подъёмник' }] },
-    { id: 'park', kind: 'service', name: 'Ожидание деталей', x: -7, z: -11, width: 8, depth: 8,
-      slots: [{ id: 11 }, { id: 12 }] },
-    { id: 'customer', kind: 'arrival', name: 'Стоянка клиентов', x: -7, z: 18, width: 7, depth: 8,
-      slots: [{ id: 6 }] },
-  ];
-  assert.equal(workshop.dashboard(advisor).layout, null);
-  assert.throws(() => workshop.saveLayout(advisor, { revision: 0, areas }), { status: 403 });
-  assert.deepEqual(workshop.saveLayout(manager, { revision: 0, areas: null }), { revision: 1, areas: null });
-  assert.throws(() => workshop.saveLayout(manager, { revision: 0, areas }), { status: 409 });
-  assert.throws(() => workshop.saveLayout(manager, { revision: 1,
-    areas: [{ ...areas[0], slots: [{ id: 4, name: 'Подъёмник' }] }, ...areas.slice(1)] }), { status: 409 });
-  assert.throws(() => workshop.saveLayout(manager, { revision: 1, areas: [areas[0], { ...areas[1], z: 1 }] }), { status: 400 });
-  assert.throws(() => workshop.saveLayout(manager, { revision: 1, areas: [...areas,
-    { id: 'wall', name: 'Склад', kind: 'warehouse', x: 19, z: 10, width: 5, depth: 5, slots: [] }] }), { status: 400 });
-  assert.equal(workshop.saveLayout(manager, { revision: 1, areas }).revision, 2);
-  assert.deepEqual(workshop.dashboard(advisor).bays.map(row => row.id), [1, 2, 4]);
-  assert.deepEqual(workshop.dashboard(mechanic).parking.map(row => row.id), [11, 12]);
-  assert.throws(() => workshop.action(advisor, 3, 'arrivalPark', { arrival_space: 5 }), { status: 400 });
-  assert.equal(workshop.action(advisor, 3, 'arrivalPark', { arrival_space: 6 }).arrival_space, 6);
-  assert.equal(workshop.action(advisor, 2, 'park', { parking_space: 11 }).parking_space, 11);
-  assert.throws(() => workshop.saveLayout(manager, { revision: 2, areas: [areas[0], areas[2]] }), { status: 409 });
-  assert.throws(() => workshop.saveLayout(manager, { revision: 2, areas: areas.slice(0, 2) }), { status: 409 });
-  assert.deepEqual(workshop.dashboard(advisor).layout, { revision: 2, areas });
-});
