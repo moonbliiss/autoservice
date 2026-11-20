@@ -1,0 +1,18 @@
+.form-error { color: #8d3020; background: #fbece6; }
+dialog { width: min(620px, calc(100vw - 22px)); max-height: 92dvh; border: 1px solid var(--line); padding: 0; border-radius: 14px; background: var(--paper); color: var(--ink); }
+dialog::backdrop { background: #1b272687; }
+dialog form { padding: 17px; }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.close { border: 0; border-radius: 7px; background: #eef1e9; min-width: 33px; height: 33px; color: var(--ink); font-size: 1.2rem; }
+#fields, .field-stack { display: grid; gap: 11px; }
+.field { display: grid; gap: 4px; min-width: 0; font-size: .92rem; font-weight: 630; }
+.field input, .field select, .field textarea { width: 100%; font-weight: 450; }
+.fields-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.estimate-row { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; }
+.form-error { margin-top: 11px; border-radius: 7px; padding: 7px 10px; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: end; margin-top: 15px; }
+#new-car { padding: 0; border: 0; margin: 0; min-width: 0; }
+
+@media (max-width: 390px) {
+  .fields-row { grid-template-columns: 1fr; }
+}

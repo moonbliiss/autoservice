@@ -1,0 +1,2 @@
+.profile-cars { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); }
+.car-card p { margin-top: 4px; }

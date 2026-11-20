@@ -1,0 +1,11 @@
+.map-grid { display: grid; grid-template-columns: minmax(0, 2.5fr) minmax(220px, 1fr); gap: 13px; margin-bottom: 14px; }
+.map-panel { overflow: hidden; }
+.bay-list { padding: 0 12px 12px; display: grid; gap: 7px; }
+.bay { text-align: left; display: grid; grid-template-columns: 35px minmax(0, 1fr); gap: 9px; width: 100%; padding: 8px; background: #fbfbf7; border: 1px solid var(--line); color: var(--ink); border-radius: 8px; }
+.bay[aria-pressed="true"] { border-color: #a6b39a; background: #edf1e8; }
+.bay .number { display: grid; place-items: center; height: 36px; background: #e5eadf; color: #3e5846; font-weight: 740; border-radius: 6px; }
+.bay strong, .bay small { display: block; }
+.bay small { margin-top: 2px; color: var(--muted); font-size: .85rem; }
+.bay-detail { margin: 0 12px 12px; padding: 11px 0 0; border-top: 1px solid var(--line); display: grid; align-items: start; justify-items: start; gap: 7px; }
+
+@media (max-width: 600px) { .map-grid { grid-template-columns: 1fr; } }

@@ -6,10 +6,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "node server/index.js",
     "test": "node --test",
     "prestart": "npm run build",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc -p client/tsconfig.json && vite build client --outDir ../dist --emptyOutDir"
   },
   "dependencies": {
     "react": "^19.3.1",

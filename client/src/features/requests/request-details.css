@@ -1,0 +1,20 @@
+.back { margin-bottom: 13px; }
+.detail-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(250px, 1fr); gap: 13px; align-items: start; }
+.request-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.job-output { margin-top: 9px; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 13px 0 0; }
+.facts dt { color: var(--muted); font-size: .84rem; }
+.facts dd { margin: 2px 0 0; overflow-wrap: anywhere; font-weight: 650; }
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { border-left: 2px solid #dde6d9; position: relative; padding: 0 0 13px 13px; margin-left: 3px; }
+.timeline li:last-child { padding-bottom: 0; }
+.timeline li::before { position: absolute; left: -5px; top: 7px; content: ''; width: 8px; height: 8px; border-radius: 50%; background: #66836a; }
+.timeline p { overflow-wrap: anywhere; font-size: .92rem; }
+.timeline time { font-size: .83rem; }
+.line-item { border-top: 1px solid var(--line); padding: 7px 0; }
+.line-item:first-of-type { margin-top: 8px; }
+.report + .report { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.report h3 { margin-bottom: 4px; }
+.report p + p { margin-top: 4px; }
+
+@media (max-width: 600px) { .detail-grid { grid-template-columns: 1fr; } }
