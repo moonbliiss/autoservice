@@ -1,4 +1,4 @@
-export type Role = 'advisor' | 'mechanic' | 'client'
+export type Role = 'advisor' | 'mechanic' | 'client' | 'stockkeeper' | 'manager'
 export type Profile = Role | 'mechanic2' | 'client2'
 export type Status =
   | 'new' | 'scheduled' | 'cancelled' | 'received'
@@ -10,7 +10,6 @@ export type RequestAction =
   | 'estimate' | 'approve' | 'decline' | 'assign' | 'startRepair' | 'pause' | 'resume'
   | 'repairReport' | 'ready' | 'rework' | 'release' | 'returnCar' | 'payment' | 'issue'
   | 'recordDecision' | 'moveBay' | 'park'
-  | 'issueParts'
 export type PaymentMethod = 'cash' | 'card' | 'transfer'
 export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose'>
 
@@ -46,7 +45,7 @@ export interface RequestDetail extends RequestSummary {
   client_phone?: string | null
   vin?: string | null
   mileage: number | null
-  description: string
+  description: string | null
   preferred_date: string | null
   work_instructions?: string | null
   intake_note?: string | null
@@ -79,6 +78,7 @@ export interface Bay {
   mechanic_id: number | null
   model: string | null
   mechanic: string | null
+  occupied: boolean
 }
 
 export interface ParkingSpace {
@@ -87,6 +87,7 @@ export interface ParkingSpace {
   model: string | null
   plate: string | null
   expected_date: string | null
+  occupied: boolean
 }
 
 export type RequestTracking = Pick<RequestDetail,
@@ -102,11 +103,28 @@ export interface PartSupply {
   request_id: number | null
   name: string
   sku: string
-  supplier: string
+  supplier?: string
   quantity: number
   received: number
   expected_date: string | null
   created_at: string
+}
+
+export interface WarehouseNeed {
+  request_id: number
+  bay_id: number | null
+  mechanic: string | null
+  status: Status
+  model: string
+  plate: string
+  part_id: number
+  name: string
+  sku: string
+  stock: number
+  required: number
+  issued: number
+  incoming: number
+  can_issue: boolean
 }
 
 export interface Dashboard {
@@ -120,6 +138,8 @@ export interface Dashboard {
   mechanics?: NamedItem[]
   services?: CatalogItem[]
   supplies?: PartSupply[]
+  warehouse_needs?: WarehouseNeed[]
+  staff?: (NamedItem & { role: Role })[]
   movements?: { id: number; quantity: number; note: string | null; created_at: string; name: string; employee: string;
     supply_id: number | null; request_id: number | null }[]
 }

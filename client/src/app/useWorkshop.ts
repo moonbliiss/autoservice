@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, createRequest, errorMessage, getDashboard, getRequest, orderSupply, receiveSupply, restock, selectProfile, updateRequest } from '../api/client'
+import { ApiError, createRequest, errorMessage, getDashboard, getRequest, issueStock, orderSupply, receiveSupply, restock, selectProfile, updateRequest } from '../api/client'
 import type { Dashboard, Profile, RequestDetail, RoutingAction, Submission } from '../api/types'
 import type { FormAction } from '../features/actions/ActionFields'
 import type { MapLocation } from '../features/garage/mapLayout'
@@ -79,7 +79,7 @@ export function useWorkshop() {
         setDetail(await getRequest(detail.id))
       }
     } catch (error) {
-      if (sessionChanged && profile !== profileKey(dashboard?.user.id)) {
+      if (sessionChanged && profile !== profileKey(dashboard?.user)) {
         setDashboard(current => current?.user.id === dashboard?.user.id ? null : current)
       }
       notify(errorMessage(error), true)
@@ -90,6 +90,7 @@ export function useWorkshop() {
   }
 
   const userId = dashboard?.user.id
+  const demoProfile = profileKey(dashboard?.user)
   const detailId = detail?.id
   useEffect(() => {
     if (!userId || action || busy || submitting) return
@@ -116,7 +117,7 @@ export function useWorkshop() {
         if (isCurrent() && error instanceof ApiError && error.status === 401) {
           locked.current = true
           try {
-            await selectProfile(profileKey(userId))
+            await selectProfile(demoProfile)
           } catch {
             // Retry on the next refresh if the local server is unavailable.
           } finally {
@@ -132,7 +133,7 @@ export function useWorkshop() {
       active = false
       window.clearInterval(timer)
     }
-  }, [userId, detailId, section, action, busy, submitting])
+  }, [userId, demoProfile, detailId, section, action, busy, submitting])
 
   function navigate(next: Section) {
     if (locked.current) return
@@ -213,6 +214,7 @@ export function useWorkshop() {
     const { key } = action
     try {
       if (key === 'restock') await restock(data)
+      else if (key === 'warehouseIssue') await issueStock(data)
       else if (key === 'orderSupply') await orderSupply(data)
       else if (key === 'receiveSupply') await receiveSupply(action.supply.id, data)
       else if (key === 'newRequest') setDetail(await createRequest(data))
@@ -230,7 +232,7 @@ export function useWorkshop() {
     const message = key === 'newRequest' ? 'Заявка отправлена.' : key === 'estimate' ? 'Смета отправлена клиенту.'
       : key === 'orderSupply' ? 'Заказ поставщику добавлен в поставки.'
       : key === 'receiveSupply' ? 'Запчасти оприходованы на склад.'
-      : key === 'issueParts' ? 'Запчасти выданы и списаны со склада.' : 'Изменения сохранены.'
+      : key === 'warehouseIssue' ? 'Запчасти выданы механику и списаны со склада.' : 'Изменения сохранены.'
     try {
       await refreshDashboard(message)
     } finally {

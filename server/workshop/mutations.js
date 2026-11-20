@@ -2,8 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { availableActions, transitions } from './rules.js';
 import { date, integer, requireValue, str } from './validation.js';
 
-export function createWorkshopMutations({ run, get, transaction }, queries, account, consumeParts) {
-  const { amounts, details, estimateRows, getRequest, permitted } = queries;
+export function createWorkshopMutations({ run, get, transaction }, queries, account) {
+  const { amounts, details, getRequest, permitted } = queries;
 
   function addHistory(id, user, title, note = null, isPublic = 1) {
     run('INSERT INTO history(request_id,account_id,title,note,is_public) VALUES (?,?,?,?,?)', id, user.id, title, note, isPublic);
@@ -95,9 +95,8 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     const result = str(input.result, 'Результат работы');
     const recommendations = str(input.recommendations, 'Рекомендации', { optional: true });
     const minutes = integer(input.minutes, 'Затрачено минут', 1, 20000);
-    const reportId = run('INSERT INTO work_reports(order_id,mechanic_id,kind,result,recommendations,minutes) VALUES (?,?,?,?,?,?)',
-      row.order_id, user.id, kind, result, recommendations, minutes).lastInsertRowid;
-    if (kind === 'repair') consumeParts(user, row.order_id, estimateRows(row), input.parts ?? [], reportId);
+    run('INSERT INTO work_reports(order_id,mechanic_id,kind,result,recommendations,minutes) VALUES (?,?,?,?,?,?)',
+      row.order_id, user.id, kind, result, recommendations, minutes);
   }
 
   function saveEstimate(row, input) {
@@ -120,6 +119,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
 
   function action(user, id, key, input) {
     return transaction(() => {
+      requireValue(['advisor', 'mechanic', 'client'].includes(user.role), 'Изменять заявки из этого кабинета нельзя.', 403);
       const row = getRequest(id);
       requireValue(permitted(user, row), 'Заявка не найдена.', 404);
       if (key === 'resume' && row.status === 'paused' && user.role === 'mechanic' && row.mechanic_id === user.id && row.bay_id) {
@@ -201,11 +201,9 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
         case 'release':
           updateOrder(row, 'paused', { bay_id: null });
           break;
-        case 'issueParts':
-          requireValue(Array.isArray(input.parts) && input.parts.length > 0, 'Укажите количество хотя бы одной запчасти.');
-          consumeParts(user, row.order_id, money.estimate, input.parts);
-          break;
         case 'repairReport':
+          requireValue(input.parts == null || (Array.isArray(input.parts) && input.parts.length === 0),
+            'Выдачу запчастей регистрирует запчастист.', 403);
           saveReport(user, row, input, 'repair');
           updateOrder(row, 'inspection');
           break;
@@ -235,7 +233,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           updateOrder(row, 'issued', { bay_id: null });
           break;
       }
-      addHistory(id, user, transitions[key][2], note, ['release', 'issueParts'].includes(key) ? 0 : 1);
+      addHistory(id, user, transitions[key][2], note, key === 'release' ? 0 : 1);
       return details(user, id);
     });
   }

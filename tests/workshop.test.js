@@ -9,6 +9,7 @@ test('заявка проходит диагностику, согласован
   const client = workshop.profile('client');
   const mechanic = workshop.profile('mechanic');
   const otherClient = workshop.profile('client2');
+  const stockkeeper = workshop.profile('stockkeeper');
   const appointment = '2027-06-10T10:30';
   const draft = workshop.createRequest(client, { model: 'Renault Logan', plate: 'А100АА55', description: 'Шум при торможении' });
   const id = draft.id;
@@ -50,10 +51,13 @@ test('заявка проходит диагностику, согласован
   const report = { result: 'Колодки заменены, торможение проверено', minutes: 45 };
   const stock = () => workshop.dashboard(advisor).parts.find(part => part.id === 3).stock;
   const before = stock();
-  assert.throws(() => step(mechanic, 'repairReport', { ...report, parts: [{ id: 3, quantity: 1 }, { id: 3, quantity: 1 }] }), /превышает/);
+  const issue = { request_id: id, part_id: 3, quantity: 1 };
+  assert.throws(() => workshop.issueParts(stockkeeper, { ...issue, quantity: 2 }), /превышает/);
+  assert.throws(() => step(mechanic, 'repairReport', { ...report, parts: [{ id: 3, quantity: 1 }] }), { status: 403 });
   assert.equal(stock(), before);
   assert.equal(workshop.details(mechanic, id).reports.length, 1);
-  assert.equal(step(mechanic, 'repairReport', { ...report, parts: [{ id: 3, quantity: 1 }] }).status, 'inspection');
+  workshop.issueParts(stockkeeper, issue);
+  assert.equal(step(mechanic, 'repairReport', report).status, 'inspection');
   assert.equal(stock(), before - 1);
   step(advisor, 'rework', { note: 'Повторить проверку на стенде' });
   step(mechanic, 'startRepair');
@@ -88,8 +92,10 @@ test('отмена визита, возврат без ремонта и поп�
   assert.equal(returned.total, 0);
   assert.equal(workshop.action(advisor, request.id, 'issue', {}).status, 'issued');
   assert.throws(() => workshop.restock(client, { part_id: 2, quantity: 5, note: 'Накладная' }), { status: 403 });
-  assert.equal(workshop.restock(advisor, { part_id: 2, quantity: 5, note: 'Накладная 842' }).stock, 13);
-  assert.equal(workshop.dashboard(advisor).movements[0].note, 'Накладная 842');
+  const stockkeeper = workshop.profile('stockkeeper');
+  assert.throws(() => workshop.restock(advisor, { part_id: 2, quantity: 5, note: 'Накладная' }), { status: 403 });
+  assert.equal(workshop.restock(stockkeeper, { part_id: 2, quantity: 5, note: 'Накладная 842' }).stock, 13);
+  assert.equal(workshop.dashboard(stockkeeper).movements[0].note, 'Накладная 842');
 });
 
 test('приёмщик оформляет очный визит, распределяет работы и освобождает пост на время поставки', t => {
@@ -207,6 +213,7 @@ test('детали проходят через заказ поставщику, 
   const advisor = workshop.profile('advisor');
   const mechanic = workshop.profile('mechanic');
   const client = workshop.profile('client');
+  const stockkeeper = workshop.profile('stockkeeper');
   const request = workshop.dashboard(advisor).requests.find(row => row.status === 'new');
   const current = workshop.dashboard(mechanic).requests.find(row => row.status === 'diagnosing');
   const step = (user, key, data = {}) => workshop.action(user, request.id, key, data);
@@ -217,10 +224,10 @@ test('детали проходят через заказ поставщику, 
   const order = { part_id: 'new', sku: 'TEST-BP', name: 'Колодки для заказа', price: 4200,
     request_id: request.id, supplier: 'Поставщик', quantity: 3, expected_date: '2027-06-18' };
   assert.throws(() => workshop.orderSupply(mechanic, order), { status: 403 });
-  const supplyId = workshop.orderSupply(advisor, order).id;
+  const supplyId = workshop.orderSupply(stockkeeper, order).id;
   const padsId = workshop.dashboard(advisor).supplies[0].part_id;
   assert.equal(stock(padsId), 0);
-  assert.equal(workshop.dashboard(advisor).movements.length, 0);
+  assert.equal(workshop.dashboard(stockkeeper).movements.length, 0);
   step(advisor, 'estimate', { version: 0, lines: [
     { kind: 'part', catalog_id: 1, quantity: 4, price: 900 },
     { kind: 'part', catalog_id: padsId, quantity: 1, price: 4200 },
@@ -231,12 +238,14 @@ test('детали проходят через заказ поставщику, 
   step(mechanic, 'startRepair');
 
   const oilBefore = stock(1);
-  const oil = { id: 1, quantity: 4 };
-  const pads = { id: padsId, quantity: 1 };
-  assert.throws(() => step(mechanic, 'issueParts', { parts: [oil, pads] }), { status: 409 });
+  const oil = { request_id: request.id, part_id: 1, quantity: 4 };
+  const pads = { request_id: request.id, part_id: padsId, quantity: 1 };
+  assert.throws(() => workshop.issueParts(stockkeeper, pads), /недостаточно запчастей/);
   assert.equal(stock(1), oilBefore);
-  assert.equal(workshop.dashboard(advisor).movements.length, 0);
-  assert.equal(step(mechanic, 'issueParts', { parts: [oil] }).parts_remaining[1], 0);
+  assert.equal(workshop.dashboard(stockkeeper).movements.length, 0);
+  assert.throws(() => workshop.issueParts(mechanic, oil), { status: 403 });
+  workshop.issueParts(stockkeeper, oil);
+  assert.equal(workshop.details(mechanic, request.id).parts_remaining[1], 0);
   assert.equal(stock(1), oilBefore - 4);
 
   const parked = step(advisor, 'park', { parking_space: 4 });
@@ -246,27 +255,27 @@ test('детали проходят через заказ поставщику, 
   assert.match(workshop.details(client, request.id).parking_reason, /Ожидаются запчасти/);
 
   assert.throws(() => workshop.receiveSupply(mechanic, supplyId, { quantity: 1 }), { status: 403 });
-  workshop.receiveSupply(advisor, supplyId, { quantity: 1, note: 'Накладная 17' });
+  workshop.receiveSupply(stockkeeper, supplyId, { quantity: 1, note: 'Накладная 17' });
   assert.equal(stock(padsId), 1);
   assert.equal(workshop.dashboard(advisor).supplies[0].received, 1);
-  assert.throws(() => workshop.receiveSupply(advisor, supplyId, { quantity: 3 }), { status: 409 });
+  assert.throws(() => workshop.receiveSupply(stockkeeper, supplyId, { quantity: 3 }), { status: 409 });
   assert.equal(stock(padsId), 1);
 
   step(advisor, 'assign', assignment);
   step(mechanic, 'startRepair');
-  assert.throws(() => step(mechanic, 'repairReport', { result: 'Ремонт завершён', minutes: 30, parts: [oil, pads] }),
-    /превышает согласованное/);
+  assert.throws(() => workshop.issueParts(stockkeeper, oil), /превышает/);
   assert.equal(stock(padsId), 1);
-  const done = step(mechanic, 'repairReport', { result: 'Ремонт завершён', minutes: 30, parts: [pads] });
+  workshop.issueParts(stockkeeper, pads);
+  const done = step(mechanic, 'repairReport', { result: 'Ремонт завершён', minutes: 30 });
   assert.equal(done.status, 'inspection');
   assert.equal(stock(padsId), 0);
   assert.equal(stock(1), oilBefore - 4);
   assert.equal(done.stock_usage.length, 2);
-  workshop.receiveSupply(advisor, supplyId, { quantity: 2 });
+  workshop.receiveSupply(stockkeeper, supplyId, { quantity: 2 });
   assert.equal(workshop.dashboard(advisor).supplies[0].received, 3);
-  assert.throws(() => workshop.receiveSupply(advisor, supplyId, { quantity: 1 }), { status: 409 });
+  assert.throws(() => workshop.receiveSupply(stockkeeper, supplyId, { quantity: 1 }), { status: 409 });
   assert.equal(stock(padsId), 2);
-  const moves = workshop.dashboard(advisor).movements;
+  const moves = workshop.dashboard(stockkeeper).movements;
   assert.deepEqual(moves.map(move => move.quantity), [2, -1, 1, -4]);
   assert.equal(moves.filter(move => move.supply_id === supplyId).length, 2);
   assert.ok(moves.every(move => move.request_id === request.id));
@@ -287,4 +296,62 @@ test('машина переезжает на парковку из диагно�
   });
   assert.equal(returned.status, 'diagnosis_assigned');
   assert.equal(returned.parking_space, null);
+});
+
+test('кабинеты ограничивают и просмотр данных, и операции', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const stockkeeper = workshop.profile('stockkeeper');
+  const manager = workshop.profile('manager');
+  const mechanic = workshop.profile('mechanic');
+  const secondMechanic = workshop.profile('mechanic2');
+  const customer = workshop.profile('client');
+
+  const warehouse = workshop.dashboard(stockkeeper);
+  assert.deepEqual(warehouse.requests, []);
+  assert.equal(warehouse.clients, undefined);
+  assert.equal(warehouse.bays, undefined);
+  const need = warehouse.warehouse_needs.find(row => row.request_id === 2 && row.part_id === 1);
+  assert.equal(need.required, 4);
+  assert.equal(need.mechanic, secondMechanic.name);
+  assert.equal(need.can_issue, true);
+  for (const key of ['client_name', 'client_phone', 'description', 'unit_price', 'payment']) assert.ok(!(key in need));
+  assert.throws(() => workshop.details(stockkeeper, 2), { status: 404 });
+  assert.throws(() => workshop.action(stockkeeper, 2, 'park', { parking_space: 4 }), { status: 403 });
+
+  const supplies = workshop.dashboard(advisor);
+  assert.equal(supplies.movements, undefined);
+  assert.equal(supplies.warehouse_needs, undefined);
+  assert.throws(() => workshop.orderSupply(advisor, { part_id: 1, quantity: 1, supplier: 'Поставщик' }), { status: 403 });
+
+  const bay = workshop.dashboard(mechanic).bays.find(row => row.id === 2);
+  assert.equal(bay.occupied, true);
+  assert.equal(bay.request_id, null);
+  assert.equal(bay.model, null);
+  assert.throws(() => workshop.details(mechanic, 2), { status: 404 });
+  const ownTask = workshop.details(secondMechanic, 2);
+  assert.equal(ownTask.total, undefined);
+  assert.equal(ownTask.client_phone, undefined);
+  assert.ok(ownTask.estimate.every(line => line.unit_price === undefined));
+  assert.ok(!ownTask.actions.includes('issueParts'));
+  assert.throws(() => workshop.issueParts(secondMechanic, { request_id: 2, part_id: 1, quantity: 1 }), { status: 403 });
+
+  const snapshot = workshop.dashboard(manager);
+  assert.equal(snapshot.requests.length, 3);
+  assert.equal(snapshot.staff.length, 5);
+  assert.equal(snapshot.vehicles.length, 3);
+  assert.equal(snapshot.warehouse_needs.length, warehouse.warehouse_needs.length);
+  const full = workshop.details(manager, 2);
+  assert.equal(full.total, 6120);
+  assert.ok(full.client_phone);
+  assert.ok(full.work_instructions);
+  assert.deepEqual(full.actions, []);
+  assert.throws(() => workshop.action(manager, 2, 'park', { parking_space: 4 }), { status: 403 });
+  assert.throws(() => workshop.issueParts(manager, { request_id: 2, part_id: 1, quantity: 1 }), { status: 403 });
+  assert.throws(() => workshop.restock(manager, { part_id: 1, quantity: 1, note: 'Приход' }), { status: 403 });
+  assert.throws(() => workshop.createRequest(manager, {}), { status: 403 });
+
+  assert.equal(workshop.dashboard(customer).parts, undefined);
+  assert.throws(() => workshop.details(customer, 2), { status: 404 });
 });

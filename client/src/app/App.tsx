@@ -1,5 +1,7 @@
 import { ActionDialog } from '../features/actions/ActionDialog'
 import { StockView } from '../features/inventory/StockView'
+import { WarehouseDesk } from '../features/inventory/WarehouseNeeds'
+import { DirectoryView } from '../features/management/DirectoryView'
 import { Overview } from '../features/overview/Overview'
 import { RequestDetails } from '../features/requests/RequestDetails'
 import { RequestList } from '../features/requests/RequestList'
@@ -23,15 +25,20 @@ export function App() {
       {!dashboard ? <p>{busy ? 'Загрузка мастерской…'
         : 'Не удалось подключиться к мастерской. Проверьте запуск сервера и обновите страницу.'}</p>
         : detail ? <RequestDetails row={detail} role={dashboard.user.role}
-          onAction={key => showAction({ key, row: detail })} onBack={() => navigate(section)}
-          onOrderPart={() => showAction({ key: 'orderSupply', requestId: detail.id })} />
-        : section === 'overview' ? <Overview dashboard={dashboard} onMove={moveOnMap} onOpen={openRequest}
-          onNewRequest={onNewRequest} onRequests={() => navigate('requests')} onStock={() => navigate('stock')} />
+          onAction={key => showAction({ key, row: detail })} onBack={() => navigate(section)} />
+        : section === 'overview' ? (dashboard.user.role === 'stockkeeper'
+          ? <WarehouseDesk needs={dashboard.warehouse_needs ?? []}
+            onIssue={need => showAction({ key: 'warehouseIssue', need })}
+            onOrder={need => showAction({ key: 'orderSupply', requestId: need.request_id, partId: need.part_id,
+              quantity: need.required - need.issued - need.stock - need.incoming })} />
+          : <Overview dashboard={dashboard} onMove={moveOnMap} onOpen={openRequest}
+            onNewRequest={onNewRequest} onRequests={() => navigate('requests')} onStock={() => navigate('stock')} />)
         : section === 'requests' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
           onSearch={setSearch} filter={filter} onFilter={setFilter} onNewRequest={onNewRequest} />
         : section === 'stock' ? <StockView dashboard={dashboard} onRestock={() => showAction({ key: 'restock' })}
           onOrder={partId => showAction({ key: 'orderSupply', partId })}
           onReceive={supply => showAction({ key: 'receiveSupply', supply })} onOpenRequest={openRequest} />
+        : section === 'directory' ? <DirectoryView dashboard={dashboard} />
         : <CarsView dashboard={dashboard} onNewRequest={onNewRequest} />}
     </AppShell>
     {dashboard && action && <ActionDialog action={action} dashboard={dashboard} busy={submitting} error={formError}

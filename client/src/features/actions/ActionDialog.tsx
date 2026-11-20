@@ -21,14 +21,6 @@ function submissionFor(action: FormAction, form: HTMLFormElement): Submission {
     })
     for (const key of ['catalog', 'name', 'quantity', 'price']) delete data[key]
   }
-  if (action.key === 'repairReport' || action.key === 'issueParts') {
-    data.parts = []
-    for (const [name, quantity] of fields) {
-      if (!name.startsWith('part_')) continue
-      if (Number(quantity) > 0) data.parts.push({ id: name.slice(5), quantity })
-      delete data[name]
-    }
-  }
   return data
 }
 
@@ -60,6 +52,7 @@ export function ActionDialog({ action, dashboard, busy, error, onClose, onSubmit
     : action.key === 'estimate' ? 'Отправить смету'
     : action.key === 'orderSupply' ? 'Создать заказ поставщику'
     : action.key === 'receiveSupply' ? 'Оприходовать на склад'
+    : action.key === 'warehouseIssue' ? 'Выдать механику'
     : action.key === 'diagnosisReport' || action.key === 'repairReport' ? 'Отправить отчёт' : 'Подтвердить'
   return <dialog ref={dialog} id="dialog" aria-labelledby="dialog-title" onCancel={event => { event.preventDefault(); close() }}>
     <form id="form" onSubmit={submit}>

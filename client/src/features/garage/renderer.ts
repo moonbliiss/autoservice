@@ -152,7 +152,7 @@ export function mountGarage(
       const bay = bayLocations.find(post => Math.abs(post.x - pose.x) < .01 && Math.abs(post.z - pose.z) < .01)
       if (bay) heights.set(bay.id, pose.lift)
       drawShadow(cam, pose)
-      add(carModels[id % carModels.length], pose)
+      add(carModels[Math.abs(id) % carModels.length], pose)
       const projected = [-1.12, 1.12].flatMap(x => [0, 1.48].flatMap(y => [-2.14, 2.14].map(z =>
         project(transform([x, y, z], pose), cam),
       )))
@@ -229,10 +229,10 @@ export function mountGarage(
     },
     update(bays: readonly Bay[], parking: readonly ParkingSpace[], selected: MapLocation | null, targets: string[]) {
       const next = new Map<number, SceneLocation>()
-      for (const place of sceneLocations) {
+      for (const [index, place] of sceneLocations.entries()) {
         const entries = place.kind === 'bay' ? bays : parking
-        const id = entries.find(entry => entry.id === place.id)?.request_id
-        if (id != null) next.set(id, place)
+        const entry = entries.find(item => item.id === place.id)
+        if (entry?.occupied) next.set(entry.request_id ?? -(index + 1), place)
       }
       const now = performance.now()
       if (reduceMotion.matches) motions.clear()

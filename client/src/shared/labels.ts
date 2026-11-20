@@ -1,4 +1,8 @@
-import type { PaymentMethod, RequestAction, Status } from '../api/types'
+import type { PaymentMethod, RequestAction, Role, Status } from '../api/types'
+
+export const roleLabels: Record<Role, string> = {
+  advisor: 'Мастер-приёмщик', mechanic: 'Механик', client: 'Клиент', stockkeeper: 'Запчастист', manager: 'Управляющий',
+}
 
 export const statusLabels = {
   new: 'Новая', scheduled: 'Визит назначен', cancelled: 'Отменена', received: 'Автомобиль принят',
@@ -17,7 +21,7 @@ export const actionLabels = {
   release: 'Освободить пост', returnCar: 'Подготовить возврат', payment: 'Зарегистрировать оплату',
   issue: 'Выдать автомобиль', newRequest: 'Новая заявка', restock: 'Пополнить склад',
   recordDecision: 'Зафиксировать ответ клиента', moveBay: 'Переназначить пост или механика', park: 'Перевести на парковку',
-  issueParts: 'Взять запчасти со склада', orderSupply: 'Заказать запчасть', receiveSupply: 'Принять поставку',
-} satisfies Record<RequestAction | 'newRequest' | 'restock' | 'orderSupply' | 'receiveSupply', string>
+  warehouseIssue: 'Выдать запчасть', orderSupply: 'Заказать запчасть', receiveSupply: 'Принять поставку',
+} satisfies Record<RequestAction | 'newRequest' | 'restock' | 'orderSupply' | 'receiveSupply' | 'warehouseIssue', string>
 
 export const paymentLabels = { cash: 'Наличные', card: 'Карта', transfer: 'Перевод' } satisfies Record<PaymentMethod, string>

@@ -51,11 +51,12 @@ export function GarageMap({ bays, parking, selected, targets = noTargets, onSele
           data-location={place} onClick={onOpenStock}>Склад</button>
         const key = locationKey(place)
         const bay = place.kind === 'bay'
-        const model = (bay ? bays : parking).find(entry => entry.id === place.id)?.model
+        const entry = (bay ? bays : parking).find(item => item.id === place.id)
+        const model = entry?.model
         const name = bay ? `Пост ${place.id}, ${garagePosts[place.id - 1].name}`
-          : `Место ${place.id}, ${model ?? 'свободно'}`
+          : `Место ${place.id}, ${model ?? (entry?.occupied ? 'занято' : 'свободно')}`
         return <button key={key} className={`marker ${bay ? 'bay-marker' : 'parking-marker'}`} type="button" hidden={hidden}
-          data-location={key} data-occupied={Boolean(model)} data-target={targets.includes(key)}
+          data-location={key} data-occupied={Boolean(entry?.occupied)} data-target={targets.includes(key)}
           style={{ left: x, top: y }} aria-label={name} title={bay && model ? `${name} · ${model}` : name}
           aria-pressed={selectedKey === key} onClick={() => onSelect(place)}>
           {bay ? `Пост ${place.id}` : String(place.id).padStart(2, '0')}

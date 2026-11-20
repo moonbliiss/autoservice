@@ -1,19 +1,20 @@
 import { useState } from 'react'
-import type { Dashboard, PartSupply, RequestAction, RequestDetail } from '../../api/types'
+import type { Dashboard, PartSupply, RequestAction, RequestDetail, WarehouseNeed } from '../../api/types'
 import type { MapLocation } from '../garage/mapLayout'
 import { money } from '../../shared/format'
 import { paymentLabels } from '../../shared/labels'
 import { AdvisorRequestFields } from './AdvisorRequestFields'
 import { EstimateFields } from './EstimateFields'
-import { OrderSupplyFields, ReceiveSupplyFields } from './SupplyFields'
+import { OrderSupplyFields, ReceiveSupplyFields, WarehouseIssueFields } from './SupplyFields'
 import { Field, SelectField, TextField, type Option } from './fields'
 
 export type FormAction =
   | { key: RequestAction; row: RequestDetail; destination?: MapLocation }
   | { key: 'newRequest'; vehicleId?: number }
   | { key: 'restock' }
-  | { key: 'orderSupply'; requestId?: number; partId?: number }
+  | { key: 'orderSupply'; requestId?: number; partId?: number; quantity?: number }
   | { key: 'receiveSupply'; supply: PartSupply }
+  | { key: 'warehouseIssue'; need: WarehouseNeed }
 
 function NewRequestFields({ vehicles = [], vehicleId }: { vehicles: Dashboard['vehicles']; vehicleId?: number }) {
   const [vehicle, setVehicle] = useState(String(vehicleId ?? vehicles[0]?.id ?? 'new'))
@@ -46,36 +47,18 @@ function AssignmentFields({ dashboard, row, bayId }: { dashboard: Dashboard; row
   </>
 }
 
-function PartsFields({ dashboard, row, isReport }: { dashboard: Dashboard; row: RequestDetail; isReport: boolean }) {
-  const approved = new Map<number, number>()
-  for (const line of row.estimate) {
-    if (line.part_id) approved.set(line.part_id, (approved.get(line.part_id) ?? 0) + line.quantity)
-  }
-  const parts = (dashboard.parts ?? []).filter(part => approved.has(part.id))
-  if (!parts.length) return null
-  const available = parts.some(part => Math.min(row.parts_remaining?.[part.id] ?? approved.get(part.id) ?? 0, part.stock) > 0)
-  return <>
-    {isReport && <h3>{row.stock_usage?.length ? 'Дополнительный расход запчастей' : 'Фактический расход запчастей'}</h3>}
-    {!isReport && !available && <p className="muted">Доступных деталей для выдачи по этой смете сейчас нет.</p>}
-    {parts.map(part => {
-      const remaining = row.parts_remaining?.[part.id] ?? approved.get(part.id) ?? 0
-      return <Field key={part.id} label={`${part.name} · осталось по смете ${remaining}, на складе ${part.stock}`}
-        name={'part_' + part.id} type="number" required={false} defaultValue={0} min={0} max={Math.min(remaining, part.stock)} />
-    })}
-  </>
-}
-
-function ReportFields({ dashboard, row, repair }: { dashboard: Dashboard; row: RequestDetail; repair: boolean }) {
+function ReportFields({ repair }: { repair: boolean }) {
   return <>
     <TextField label={repair ? 'Что выполнено и как проверен результат?' : 'Что проверили и какую неисправность нашли?'} name="result" />
     <Field label="Затрачено минут" name="minutes" type="number" min={1} max={20000} />
     <TextField label="Рекомендации или замечания" name="recommendations" required={false} />
-    {repair && <PartsFields dashboard={dashboard} row={row} isReport />}
   </>
 }
 
 export function ActionFields({ action, dashboard }: { action: FormAction; dashboard: Dashboard }) {
-  if (action.key === 'orderSupply') return <OrderSupplyFields dashboard={dashboard} requestId={action.requestId} partId={action.partId} />
+  if (action.key === 'orderSupply') return <OrderSupplyFields dashboard={dashboard} requestId={action.requestId}
+    partId={action.partId} quantity={action.quantity} />
+  if (action.key === 'warehouseIssue') return <WarehouseIssueFields need={action.need} />
   if (action.key === 'receiveSupply') return <ReceiveSupplyFields supply={action.supply} />
   if (action.key === 'newRequest') return dashboard.user.role === 'advisor'
     ? <AdvisorRequestFields clients={dashboard.clients} vehicles={dashboard.vehicles} />
@@ -125,9 +108,8 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
     case 'startDiagnosis': return <p>Зафиксировать начало диагностики на назначенном посту?</p>
     case 'startRepair': return <p>Зафиксировать начало работы на назначенном посту?</p>
     case 'resume': return <p>Вернуть заказ в работу?</p>
-    case 'issueParts': return <PartsFields dashboard={dashboard} row={row} isReport={false} />
     case 'diagnosisReport':
-    case 'repairReport': return <ReportFields dashboard={dashboard} row={row} repair={key === 'repairReport'} />
+    case 'repairReport': return <ReportFields repair={key === 'repairReport'} />
     case 'pause': return <TextField label="Причина паузы" name="note" />
     case 'release': return <p>Пост станет доступен для других работ. Чтобы продолжить ремонт, назначьте пост заново.</p>
     case 'rework': return <TextField label="Что нужно исправить" name="note" />

@@ -1,0 +1,10 @@
+.warehouse-assignment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 0 16px 12px;
+  color: var(--muted);
+}
+
+.warehouse-actions { align-items: center; margin: 0; }

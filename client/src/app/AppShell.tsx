@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Dashboard, Profile } from '../api/types'
-import { navigation, profileKey, profiles, roleLabels, type Section } from './navigation'
+import { roleLabels } from '../shared/labels'
+import { navigation, profileKey, profiles, type Section } from './navigation'
 import './shell.css'
 
 export function AppShell({ user, section, busy, submitting, notice, navigate, changeProfile, children }: {
@@ -27,12 +28,12 @@ export function AppShell({ user, section, busy, submitting, notice, navigate, ch
         <span id="location-label">{user ? roleLabels[user.role] : 'Рабочее пространство'}</span>
         <label className="profile"><span id="avatar" className="avatar" aria-hidden="true">{avatar}</span>
           <span className="profile-label"><span id="profile-name">{name}</span>
-            <select id="profile" aria-label="Демонстрационный профиль" value={profileKey(user?.id)}
+            <select id="profile" aria-label="Демонстрационный профиль" value={profileKey(user)}
               disabled={busy || submitting} onChange={event => {
                 const profile = profiles.find(item => item.key === event.target.value)
                 if (profile) void changeProfile(profile.key)
               }}>
-              {profiles.map(profile => <option key={profile.id} value={profile.key}>{profile.label}</option>)}
+              {profiles.map(profile => <option key={profile.key} value={profile.key}>{profile.label}</option>)}
             </select>
           </span>
         </label>

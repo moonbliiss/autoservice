@@ -31,7 +31,7 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock }: {
   const request = dashboard.requests.find(item => item.id === requestId && item.id === selection?.requestId)
   const selectedBay = bays.find(bay => selected?.place.kind === 'bay' && bay.id === selected.place.id)
   const actions = request?.routing_actions ?? []
-  const targets = actions.length ? entries.filter(entry => entry.vehicle?.request_id == null && moveAction(actions, entry.place))
+  const targets = actions.length ? entries.filter(entry => !entry.vehicle?.occupied && moveAction(actions, entry.place))
     .map(entry => locationKey(entry.place)) : []
 
   function selectPlace(place: MapLocation) {
@@ -45,7 +45,7 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock }: {
     setSelection({ place, requestId: entry?.vehicle?.request_id ?? null })
   }
 
-  const occupied = parking.filter(space => space.request_id !== null).length
+  const occupied = parking.filter(space => space.occupied).length
   const title = selectedBay ? `Пост ${selectedBay.id} · ${selectedBay.name}`
     : selected ? `Парковка · место ${selected.place.id}` : 'Выбранное место'
   return <div className="map-grid">
@@ -63,7 +63,7 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock }: {
           <span className="muted">{request.plate} · {code(request.id)}</span>
           <StatusTag status={request.status} />
           {selectedBay?.mechanic && <span className="muted">{selectedBay.mechanic}</span>}
-        </button> : selected?.vehicle?.model ? <p>{selected.vehicle.model}</p> : selected && <p className="muted">Свободно</p>}
+        </button> : selected && <p className="muted">{selected.vehicle?.model ?? (selected.vehicle?.occupied ? 'Занято' : 'Свободно')}</p>}
         {(!selected || targets.length > 0) && <p className="muted">
           {targets.length > 0 ? 'Выберите подсвеченное свободное место на карте.' : 'Нажмите на машину, пост или парковочное место.'}
         </p>}

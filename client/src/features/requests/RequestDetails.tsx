@@ -8,7 +8,7 @@ import './request-details.css'
 
 const actionOrder: RequestAction[] = [
   'receive', 'schedule', 'cancel', 'diagnose', 'startDiagnosis', 'diagnosisReport', 'estimate',
-  'approve', 'decline', 'recordDecision', 'assign', 'startRepair', 'resume', 'issueParts', 'repairReport', 'park', 'moveBay',
+  'approve', 'decline', 'recordDecision', 'assign', 'startRepair', 'resume', 'repairReport', 'park', 'moveBay',
   'pause', 'release', 'ready', 'rework', 'returnCar', 'payment', 'issue',
 ]
 
@@ -59,8 +59,8 @@ function actionTitle(action: RequestAction, row: RequestDetail) {
   return actionLabels[action]
 }
 
-export function RequestDetails({ row, role, onAction, onBack, onOrderPart }: {
-  row: RequestDetail; role: Role; onAction: (action: RequestAction) => void; onBack: () => void; onOrderPart: () => void
+export function RequestDetails({ row, role, onAction, onBack }: {
+  row: RequestDetail; role: Role; onAction: (action: RequestAction) => void; onBack: () => void
 }) {
   const actions = actionOrder.filter(key => row.actions.includes(key))
   const facts = [
@@ -71,8 +71,10 @@ export function RequestDetails({ row, role, onAction, onBack, onOrderPart }: {
   const expected = row.assigned_to_me && (
     ['diagnosis_assigned', 'diagnosing'].includes(row.status) ? 'В отчёте укажите результаты проверки, причину неисправности, время и рекомендации.'
       : ['repair_assigned', 'repairing', 'paused'].includes(row.status)
-        ? 'В отчёте укажите выполненные работы, результаты проверки, время и фактически использованные запчасти.' : ''
+        ? 'В отчёте укажите выполненные работы, результаты проверки и затраченное время.' : ''
   )
+  const needed = new Map(row.estimate.filter(line => line.part_id !== null && (row.parts_remaining?.[line.part_id] ?? 0) > 0)
+    .map(line => [line.part_id!, line.name]))
   return <>
     <div className="back"><Button variant="text-button" onClick={onBack}>К списку</Button></div>
     <Heading title={row.model}
@@ -88,7 +90,7 @@ export function RequestDetails({ row, role, onAction, onBack, onOrderPart }: {
           {row.pause_reason && <p className="muted request-text">Пауза: {row.pause_reason}</p>}
           {row.resume_blocked && <p className="muted">Сначала завершите или поставьте на паузу текущую задачу.</p>}
         </Panel>}
-        <Panel inset title="Обращение"><p className="request-text">{row.description}</p>
+        {row.description && <Panel inset title="Обращение"><p className="request-text">{row.description}</p>
           <dl className="facts">{facts.filter(([, value]) => value != null && value !== '').map(([label, value]) =>
             <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
           )}</dl>
@@ -101,17 +103,20 @@ export function RequestDetails({ row, role, onAction, onBack, onOrderPart }: {
           {actions.length > 0 && <div className="actions">{actions.map((key, index) =>
             <Button key={key} variant={index === 0 ? 'primary' : 'secondary'} onClick={() => onAction(key)}>{actionTitle(key, row)}</Button>
           )}</div>}
-        </Panel>
+        </Panel>}
         <EstimatePanel row={row} role={role} />
+        {role === 'mechanic' && row.assigned_to_me && ['repair_assigned', 'repairing', 'paused'].includes(row.status) && needed.size > 0
+          && <Panel inset title="Получить у запчастиста">
+            {[...needed].map(([id, name]) => <p className="split line-item" key={id}>
+              <span>{name}</span><strong>× {row.parts_remaining?.[id]}</strong>
+            </p>)}
+          </Panel>}
         {Boolean(row.stock_usage?.length) && <Panel inset title="Выдано со склада">
           {row.stock_usage?.map(part => <p className="split line-item" key={part.part_id}><span>{part.name}</span><strong>× {part.quantity}</strong></p>)}
         </Panel>}
         <ReportsPanel row={row} />
       </div>
       <div className="column"><PaymentPanel row={row} />
-        {role === 'advisor' && row.order_id && !['cancelled', 'ready', 'issued'].includes(row.status) && <Panel inset title="Запчасти">
-          <Button onClick={onOrderPart}>Заказать запчасть</Button>
-        </Panel>}
         <Panel inset title="История заявки"><ol className="timeline">{row.history.map((event, index) =>
           <li key={index}><h3>{event.title}</h3><time className="muted">{dateTime(event.created_at)}</time>
             {event.note && <p className="request-text">{event.note}</p>}</li>

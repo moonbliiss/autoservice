@@ -1,8 +1,11 @@
 import { date, integer, requireValue, str } from './validation.js';
 
 export function createInventory({ all, get, run, transaction }) {
-  function requireAdvisor(user) {
-    requireValue(user.role === 'advisor', 'Закупки и приёмка доступны мастеру-приёмщику.', 403);
+  const issueStages = ['repair_assigned', 'repairing'];
+  const canIssue = order => issueStages.includes(order.work_status) && Boolean(order.mechanic_id && order.bay_id);
+
+  function requireStockkeeper(user) {
+    requireValue(user.role === 'stockkeeper', 'Складские операции выполняет запчастист.', 403);
   }
 
   function addStock(user, partId, quantity, note) {
@@ -12,7 +15,7 @@ export function createInventory({ all, get, run, transaction }) {
   }
 
   function restock(user, input) {
-    requireAdvisor(user);
+    requireStockkeeper(user);
     const id = integer(input.part_id, 'Запчасть');
     const quantity = integer(input.quantity, 'Количество', 1, 10000);
     const note = str(input.note, 'Поставщик или накладная');
@@ -23,7 +26,7 @@ export function createInventory({ all, get, run, transaction }) {
   }
 
   function orderSupply(user, input) {
-    requireAdvisor(user);
+    requireStockkeeper(user);
     const quantity = integer(input.quantity, 'Количество', 1, 10000);
     const supplier = str(input.supplier, 'Поставщик', { limit: 120 });
     const expectedDate = date(input.expected_date, 'Ожидаемая поставка', true);
@@ -53,7 +56,7 @@ export function createInventory({ all, get, run, transaction }) {
   }
 
   function receiveSupply(user, id, input) {
-    requireAdvisor(user);
+    requireStockkeeper(user);
     const quantity = integer(input.quantity, 'Поступило', 1, 10000);
     const document = str(input.note, 'Накладная', { optional: true, limit: 120 });
     return transaction(() => {
@@ -67,24 +70,46 @@ export function createInventory({ all, get, run, transaction }) {
     });
   }
 
-  function consumeParts(user, orderId, estimate, items, reportId = null) {
-    requireValue(Array.isArray(items) && items.length <= 20, 'Проверьте список запчастей.');
-    const approved = new Map();
-    for (const line of estimate) {
-      if (line.part_id) approved.set(line.part_id, (approved.get(line.part_id) || 0) + line.quantity);
-    }
-    for (const item of items) {
-      const partId = integer(item?.id, 'Запчасть');
-      const quantity = integer(item?.quantity, 'Количество запчастей', 1, 100);
+  function issueParts(user, input) {
+    requireStockkeeper(user);
+    const requestId = integer(input.request_id, 'Заявка');
+    const partId = integer(input.part_id, 'Запчасть');
+    const quantity = integer(input.quantity, 'Количество запчастей', 1, 2000);
+    return transaction(() => {
+      const order = get(`SELECT id, status AS work_status, estimate_version, mechanic_id, bay_id
+        FROM orders WHERE request_id=?`, requestId);
+      requireValue(order, 'Заказ-наряд не найден.', 404);
+      requireValue(canIssue(order), 'Выдача доступна, когда автомобиль назначен механику на пост для ремонта.', 409);
+      const { approved } = get(`SELECT COALESCE(SUM(quantity),0) AS approved FROM estimate_lines
+        WHERE order_id=? AND version=? AND part_id=?`, order.id, order.estimate_version, partId);
       const { used } = get(`SELECT COALESCE(SUM(quantity),0) AS used
-        FROM order_part_usage WHERE order_id=? AND part_id=?`, orderId, partId);
-      requireValue(quantity + used <= (approved.get(partId) || 0), 'Расход запчастей превышает согласованное количество.');
+        FROM order_part_usage WHERE order_id=? AND part_id=?`, order.id, partId);
+      requireValue(quantity + used <= approved, 'Выдача превышает оставшееся количество по смете.', 409);
       requireValue(run('UPDATE parts SET stock=stock-? WHERE id=? AND stock>=?', quantity, partId, quantity).changes,
         'На складе недостаточно запчастей.', 409);
-      const movementId = run('INSERT INTO stock_movements(part_id,report_id,account_id,quantity) VALUES (?,?,?,?)',
-        partId, reportId, user.id, -quantity).lastInsertRowid;
-      if (reportId === null) run('INSERT INTO repair_stock_issues(movement_id,order_id) VALUES (?,?)', movementId, orderId);
-    }
+      const movementId = run('INSERT INTO stock_movements(part_id,account_id,quantity) VALUES (?,?,?)',
+        partId, user.id, -quantity).lastInsertRowid;
+      run('INSERT INTO repair_stock_issues(movement_id,order_id) VALUES (?,?)', movementId, order.id);
+      run('INSERT INTO history(request_id,account_id,title,note,is_public) VALUES (?,?,?,?,0)', requestId, user.id,
+        'Запчасти выданы со склада', `${get('SELECT name FROM parts WHERE id=?', partId).name} × ${quantity}`);
+      return { issued: used + quantity };
+    });
+  }
+
+  function needs() {
+    const rows = all(`SELECT o.request_id,o.bay_id,o.mechanic_id,o.status AS work_status,a.name AS mechanic,
+      CASE WHEN parking.space_id IS NOT NULL THEN 'waiting_parts' ELSE o.status END AS status,
+      v.model,v.plate,p.id AS part_id,p.name,p.sku,p.stock,SUM(e.quantity) AS required,
+      COALESCE((SELECT SUM(u.quantity) FROM order_part_usage u WHERE u.order_id=o.id AND u.part_id=p.id),0) AS issued,
+      COALESCE((SELECT SUM(s.quantity-s.received) FROM part_supplies s
+        WHERE s.request_id=o.request_id AND s.part_id=p.id AND s.received<s.quantity),0) AS incoming
+      FROM orders o JOIN service_requests r ON r.id=o.request_id JOIN vehicles v ON v.id=r.vehicle_id
+      JOIN estimate_lines e ON e.order_id=o.id AND e.version=o.estimate_version JOIN parts p ON p.id=e.part_id
+      LEFT JOIN accounts a ON a.id=o.mechanic_id LEFT JOIN parking_assignments parking ON parking.order_id=o.id
+      WHERE o.status IN ('approved','repair_assigned','repairing','paused') OR (o.status='inspection' AND parking.space_id IS NOT NULL)
+      GROUP BY o.id,p.id HAVING required>issued
+      ORDER BY (o.status IN ('repair_assigned','repairing') AND o.bay_id IS NOT NULL) DESC, o.request_id,p.name`);
+    return rows.map(({ work_status, mechanic_id, ...row }) => ({ ...row, can_issue: canIssue({ ...row, work_status, mechanic_id }) }));
   }
 
   function supplies() {
@@ -99,8 +124,8 @@ export function createInventory({ all, get, run, transaction }) {
       LEFT JOIN order_part_usage usage ON usage.movement_id=s.id LEFT JOIN orders o ON o.id=usage.order_id
       LEFT JOIN supply_receipts receipts ON receipts.movement_id=s.id
       LEFT JOIN part_supplies supply ON supply.id=receipts.supply_id
-      ORDER BY s.id DESC LIMIT 25`);
+      ORDER BY s.id DESC`);
   }
 
-  return { restock, orderSupply, receiveSupply, consumeParts, supplies, movements };
+  return { restock, orderSupply, receiveSupply, issueParts, needs, supplies, movements };
 }

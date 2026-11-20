@@ -39,6 +39,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && path === '/api/dashboard') return response(res, 200, workshop.dashboard(user));
     if (req.method === 'POST' && path === '/api/requests') return response(res, 201, workshop.createRequest(user, await body(req)));
     if (req.method === 'POST' && path === '/api/stock') return response(res, 200, workshop.restock(user, await body(req)));
+    if (req.method === 'POST' && path === '/api/stock/issue') return response(res, 200, workshop.issueParts(user, await body(req)));
     if (req.method === 'POST' && path === '/api/supplies') return response(res, 201, workshop.orderSupply(user, await body(req)));
     const supplyReceipt = path.match(/^\/api\/supplies\/(\d+)\/receive$/);
     if (req.method === 'POST' && supplyReceipt) {
