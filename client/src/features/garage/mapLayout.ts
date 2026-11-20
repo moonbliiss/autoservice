@@ -1,5 +1,7 @@
 export type MapLocation = { kind: 'bay' | 'parking' | 'arrival'; id: number }
-export type SceneLocation = MapLocation & { x: number; z: number; yaw: number }
+export type SceneLocation = MapLocation & {
+  x: number; z: number; yaw: number; aisle?: number; opensFront?: boolean; lastInRow?: boolean; markZ?: number; zoneName?: string
+}
 
 export const garagePosts = [
   { id: 1, name: 'Диагностика', x: -6.05 },

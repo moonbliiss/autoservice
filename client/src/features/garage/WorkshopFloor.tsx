@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import type { Dashboard, ParkingSpace, RoutingAction } from '../../api/types'
 import { code, dateOnly } from '../../shared/format'
 import { presenceLabels } from '../../shared/labels'
 import { Button } from '../../shared/ui'
 import { StatusTag } from '../requests/status'
 import { GarageMap } from './GarageMap'
-import { arrivalLocations, locationKey, sceneLocations, type DeskLocation, type MapLocation } from './mapLayout'
+import { locationKey, type DeskLocation, type MapLocation } from './mapLayout'
+import { buildScene } from './scene'
+import { areaLabels } from './siteDesign'
 import './floor.css'
 
 type ArrivalAction = 'arrivalPark' | 'leaveArrival'
@@ -17,19 +19,23 @@ function moveAction(actions: RoutingAction[], place: MapLocation) {
   return actions.find(key => key !== 'park')
 }
 
-export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewRequest, onNewArrival, queues }: {
+export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewRequest, onNewArrival, onConfigure, queues }: {
   dashboard: Dashboard; onOpen: (id: number) => void; onMove: MoveRequest; onOpenStock?: () => void
-  onNewRequest?: () => void; onNewArrival?: (place: number) => void; queues?: ReactNode
+  onNewRequest?: () => void; onNewArrival?: (place: number) => void; onConfigure?: () => void; queues?: ReactNode
 }) {
   const [selection, setSelection] = useState<{ place: MapLocation; requestId: number | null } | DeskLocation | 'queue' | null>(null)
   const { requests, bays = [], parking = [], staff_presence: staff } = dashboard
+  const revision = dashboard.layout?.revision ?? 0
+  // Polling returns new JSON objects even when the saved design is unchanged.
+  const configuration = JSON.stringify(dashboard.layout?.areas ?? null)
+  const scene = useMemo(() => buildScene(JSON.parse(configuration)), [configuration])
   const advisor = dashboard.user.role === 'advisor'
-  const arrivals: ParkingSpace[] = arrivalLocations.map(({ id }) => {
+  const arrivals: ParkingSpace[] = scene.arrivals.map(({ id }) => {
     const request = requests.find(row => row.arrival_space === id)
     return { id, request_id: request?.id ?? null, model: request?.model ?? null, plate: request?.plate ?? null,
       expected_date: null, occupied: Boolean(request) }
   })
-  const entries = sceneLocations.map(place => ({
+  const entries = scene.locations.map(place => ({
     place, vehicle: (place.kind === 'bay' ? bays : place.kind === 'arrival' ? arrivals : parking).find(item => item.id === place.id),
   }))
   const chosen = selection && typeof selection === 'object' ? selection : null
@@ -62,25 +68,27 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock, onNewReq
     row.status === 'new' || row.status === 'scheduled' || row.status === 'received' || row.arrival_space) : []
   const expected = selected?.place.kind === 'parking' ? parking.find(space => space.id === selected.place.id)?.expected_date : null
   const selectedDesk = selection === 'warehouse' || selection === 'reception' ? selection : null
+  const deskLabel = selectedDesk && scene.marks.find(mark => mark.key === selectedDesk)?.label
   const person = selectedDesk && staff?.find(row => row.role === (selectedDesk === 'warehouse' ? 'stockkeeper' : 'advisor'))
-  const title = selection === 'queue' ? 'Заявки по статусам' : selectedDesk === 'warehouse' ? 'Склад' : selectedDesk === 'reception' ? 'Приёмка'
+  const title = selection === 'queue' ? 'Заявки по статусам' : selectedDesk ? deskLabel ?? areaLabels[selectedDesk]
     : selectedBay ? `Пост ${selectedBay.id} · ${selectedBay.name}`
-      : selected && `${arriving ? 'Клиентская стоянка' : 'Сервисная парковка'} · место ${selected.place.id}`
+      : selected && `${selected.place.zoneName ?? (arriving ? 'Клиентская стоянка' : 'Сервисная парковка')} · место ${selected.place.id}`
 
   return <div className={advisor ? 'workshop-map workshop-map-main' : 'workshop-map'}>
-    <GarageMap bays={bays} parking={parking} arrivals={arrivals} selected={selected?.place ?? null} targets={targets}
+    <GarageMap key={revision} scene={scene} bays={bays} parking={parking} arrivals={arrivals} selected={selected?.place ?? null} targets={targets}
       onSelect={selectPlace} onClear={() => setSelection(null)} onDesk={setSelection} staff={staff}>
       {advisor && <header className="map-toolbar">
         <h1>Карта сервиса</h1>
         <div className="map-toolbar-actions">
           {queues && <button type="button" className="secondary" aria-expanded={selection === 'queue'}
             onClick={() => setSelection(selection === 'queue' ? null : 'queue')}>Заявки по статусам</button>}
+          {onConfigure && <Button variant="secondary" onClick={onConfigure}>Настроить схему</Button>}
           {onNewRequest && <Button variant="primary" onClick={onNewRequest}>Новая заявка</Button>}
         </div>
-        <div className="map-legend" aria-label="Стоянки на карте">
-          <span><i className="arrival-key" />Клиентская стоянка <b>{arrivals.filter(space => space.occupied).length}/{arrivals.length}</b></span>
-          <span><i />Сервисные парковки <b>{parking.filter(space => space.occupied).length}/{parking.length}</b></span>
-        </div>
+        {(arrivals.length > 0 || parking.length > 0) && <div className="map-legend" aria-label="Стоянки на карте">
+          {arrivals.length > 0 && <span><i className="arrival-key" />Клиентская стоянка <b>{arrivals.filter(space => space.occupied).length}/{arrivals.length}</b></span>}
+          {parking.length > 0 && <span><i />Сервисные парковки <b>{parking.filter(space => space.occupied).length}/{parking.length}</b></span>}
+        </div>}
       </header>}
       {title && <section className="map-popover" aria-labelledby="map-popover-title">
         <div className="map-popover-head">

@@ -19,6 +19,12 @@ export function useWorkshop() {
   const locked = useRef(true)
   const revision = useRef(0)
 
+  async function refreshLayout() {
+    const before = ++revision.current
+    const next = await getDashboard()
+    if (before === revision.current && next.user.id === dashboard?.user.id) setDashboard(next)
+  }
+
   function notify(message: string, error = false) {
     setNotice({ message, error })
   }
@@ -62,7 +68,7 @@ export function useWorkshop() {
     setFilter('all')
   }
 
-  async function changeProfile(profile: Profile) {
+  async function changeProfile(profile: Profile, destination?: Section) {
     if (locked.current) return
     ++revision.current
     locked.current = true
@@ -73,9 +79,10 @@ export function useWorkshop() {
       sessionChanged = true
       const next = await getDashboard()
       resetView()
+      if (destination) setSection(destination)
       setDashboard(next)
       setNotice(null)
-      if (detail && next.requests.some(row => row.id === detail.id)) {
+      if (!destination && detail && next.requests.some(row => row.id === detail.id)) {
         setDetail(await getRequest(detail.id))
       }
     } catch (error) {
@@ -295,6 +302,6 @@ export function useWorkshop() {
   return {
     dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction: () => setAction(null), formError, notice, busy, submitting,
-    changeProfile, changePresence, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
+    changeProfile, changePresence, refreshLayout, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
   }
 }

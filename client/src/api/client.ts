@@ -1,3 +1,4 @@
+import type { LayoutArea, SavedLayout } from '../features/garage/siteDesign'
 import type { Dashboard, PresenceStatus, Profile, RequestAction, RequestDetail, RequestTracking, Submission } from './types'
 
 export class ApiError extends Error {
@@ -21,6 +22,7 @@ async function api<T>(path: string, payload?: Submission): Promise<T> {
   return responseData<T>(response)
 }
 
+export const saveLayout = (revision: number, areas: LayoutArea[] | null) => api<SavedLayout>('layout', { revision, areas })
 export const getDashboard = () => api<Dashboard>('dashboard')
 export const savePresence = (status: PresenceStatus) => api<{ status: PresenceStatus }>('presence', { status })
 export const selectProfile = (profile: Profile) => api('session', { profile })

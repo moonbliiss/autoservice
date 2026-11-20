@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { availableActions, transitions } from './rules.js';
 import { date, integer, requireValue, str } from './validation.js';
 
-export function createWorkshopMutations({ run, get, all, transaction }, queries, account, workTime) {
+export function createWorkshopMutations({ run, get, all, transaction }, queries, account, workTime, layout) {
   const { amounts, details, getRequest, permitted } = queries;
 
   function addHistory(id, user, title, note = null, isPublic = 1) {
@@ -180,7 +180,10 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
           if (row.arrival_space) run('DELETE FROM arrival_parking WHERE request_id=?', id);
           break;
         case 'arrivalPark': {
-          const space = integer(input.arrival_space, 'Место на клиентской стоянке', 1, 5);
+          const space = integer(input.arrival_space, 'Место на клиентской стоянке', 1, 999);
+          const configuration = layout.read()?.areas;
+          const exists = configuration ? configuration.some(area => area.kind === 'arrival' && area.slots.some(slot => slot.id === space)) : space <= 5;
+          requireValue(exists, 'Выберите существующее место на клиентской стоянке.');
           requireValue(!get('SELECT 1 FROM arrival_parking WHERE space_id=? AND request_id<>?', space, id),
             'Это место на клиентской стоянке уже занято.', 409);
           requireValue(!get(`SELECT 1 FROM service_requests r LEFT JOIN arrival_parking p ON p.request_id=r.id
@@ -193,7 +196,7 @@ export function createWorkshopMutations({ run, get, all, transaction }, queries,
           break;
         }
         case 'leaveArrival': {
-          const expected = input.arrival_space == null ? row.arrival_space : integer(input.arrival_space, 'Место на клиентской стоянке', 1, 5);
+          const expected = input.arrival_space == null ? row.arrival_space : integer(input.arrival_space, 'Место на клиентской стоянке', 1, 999);
           requireValue(expected === row.arrival_space, 'Место автомобиля изменилось. Обновите карту.', 409);
           run('DELETE FROM arrival_parking WHERE request_id=?', id);
           break;

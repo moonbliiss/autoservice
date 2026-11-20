@@ -1,7 +1,8 @@
 import type { Bay, ParkingSpace } from '../../api/types'
-import { carModels, fixtures, flat, ground, lifts, type Face, type Point } from './geometry'
+import { carModels, flat, type Face, type Point } from './geometry'
+import type { MapScene } from './scene'
 import {
-  bayLocations, desks, locationKey, parkingDepth, parkingWidth, parkingZones, sceneLocations, siteBounds, spacesPerRow,
+  locationKey, parkingDepth, parkingWidth, spacesPerRow,
   type DeskLocation, type MapLocation, type SceneLocation,
 } from './mapLayout'
 import { createMotion, motionPose, restPose, type VehicleMotion, type VehiclePose } from './vehicleMotion'
@@ -9,7 +10,7 @@ import { createMotion, motionPose, restPose, type VehicleMotion, type VehiclePos
 interface Camera { scale: number; x: number; y: number }
 interface VehicleBounds { place: SceneLocation; left: number; right: number; top: number; bottom: number; depth: number }
 export interface MarkerPosition {
-  place: SceneLocation | DeskLocation | typeof parkingZones[number]['key']; x: number; y: number; hidden: boolean
+  place: SceneLocation | string; label?: string; x: number; y: number; hidden: boolean
 }
 
 const cs = Math.cos(.34), sn = Math.sin(.34)
@@ -23,17 +24,17 @@ function project([x, y, z]: Point, cam: Camera): Point {
   return [cam.x + (x * cs - z * sn) * cam.scale, cam.y + (depth * se - y * ce) * cam.scale, depth * ce + y * se]
 }
 
-const projectedBounds = [siteBounds.left, siteBounds.right].flatMap(x =>
-  [0, 3.5].flatMap(y => [siteBounds.back, siteBounds.front].map(z => project([x, y, z], { x: 0, y: 0, scale: 1 }))),
-)
-const left = Math.min(...projectedBounds.map(point => point[0]))
-const right = Math.max(...projectedBounds.map(point => point[0]))
-const top = Math.min(...projectedBounds.map(point => point[1]))
-const bottom = Math.max(...projectedBounds.map(point => point[1]))
-
 export function mountGarage(
-  canvas: HTMLCanvasElement, stage: HTMLElement, onMarkers: (positions: MarkerPosition[]) => void,
+  canvas: HTMLCanvasElement, stage: HTMLElement, onMarkers: (positions: MarkerPosition[]) => void, scene: MapScene,
 ) {
+  const { bounds, locations, bays: bayLocations, desks, ground, fixtures, lifts } = scene
+  const projectedBounds = [bounds.left, bounds.right].flatMap(x =>
+    [0, 3.5].flatMap(y => [bounds.back, bounds.front].map(z => project([x, y, z], { x: 0, y: 0, scale: 1 }))),
+  )
+  const left = Math.min(...projectedBounds.map(point => point[0]))
+  const right = Math.max(...projectedBounds.map(point => point[0]))
+  const top = Math.min(...projectedBounds.map(point => point[1]))
+  const bottom = Math.max(...projectedBounds.map(point => point[1]))
   const context = canvas.getContext('2d')
   if (!context) return null
   const ctx = context
@@ -91,23 +92,23 @@ export function mountGarage(
   function drawMarkings(cam: Camera) {
     const markings: Face[] = []
     const highlights: Face[] = []
-    for (const place of sceneLocations) {
+    for (const place of locations) {
       const key = locationKey(place)
       const active = key === selectedKey
       const target = destinations.has(key)
       const bay = place.kind === 'bay'
       const x = place.x - (bay ? 2.55 : parkingWidth / 2)
-      const z = bay ? -3.53 : place.z - parkingDepth / 2
+      const z = bay ? place.z - 3.53 : place.z - parkingDepth / 2
       const w = bay ? 5.1 : parkingWidth
       const d = bay ? 7.72 : parkingDepth
       const paint = active ? selectedPaint : target ? targetPaint : bay ? '#869895' : parkingPaint
       const line = active || target ? .115 : .075
-      const back = place.kind === 'parking' && place.id <= spacesPerRow ? z : z + d - line
+      const back = (place.opensFront ?? (place.kind === 'parking' && place.id <= spacesPerRow)) ? z : z + d - line
       const faces = active || target ? highlights : markings
       if (active || target) flat(markings, x, .015, z, w, d,
         active ? (bay ? '#b5aa8f' : '#8d8061') : (bay ? '#a9beb0' : '#5d7b72'))
       flat(faces, x, .02, z, line, d, paint)
-      if (bay || active || target || place.id % spacesPerRow === 0) {
+      if (bay || active || target || (place.lastInRow ?? place.id % spacesPerRow === 0)) {
         flat(faces, x + w - line, .02, z, line, d, paint)
       }
       flat(faces, x, .02, bay ? z : back, w, line, paint)
@@ -173,7 +174,7 @@ export function mountGarage(
         depth: project([pose.x, 0, pose.z], cam)[2],
       })
     }
-    for (const bay of bayLocations) add(lifts[bay.id - 1], { x: 0, z: 0, yaw: 0, lift: heights.get(bay.id) ?? 0 })
+    for (const bay of bayLocations) add(lifts.get(bay.id) ?? [], { x: 0, z: 0, yaw: 0, lift: heights.get(bay.id) ?? 0 })
     visible.sort((a, b) => a.depth - b.depth)
     for (const { face, pose } of visible) drawFace(face, cam, pose)
     if (markersChanged) {
@@ -182,12 +183,11 @@ export function mountGarage(
         const [x, y] = project(point, cam)
         return { place, x, y, hidden: x < 12 || y < 22 || x > viewport.width - 12 || y > viewport.height - 4 }
       }
-      onMarkers([...sceneLocations.map(place => {
+      onMarkers([...locations.map(place => {
         const nearWorkshop = place.kind === 'parking' && place.id > spacesPerRow
-        const z = place.kind === 'bay' ? 4.4 : place.z + (nearWorkshop ? -.6 : 2.12)
+        const z = place.markZ ?? (place.kind === 'bay' ? 4.4 : place.z + (nearWorkshop ? -.6 : 2.12))
         return marker(place, [place.x, .02, z])
-      }), marker('warehouse', [-13.7, 1.1, -2.5]), marker('reception', [-14.2, .3, 5.35]),
-      ...parkingZones.map(zone => marker(zone.key, [.78, .55, zone.z - 3.05]))])
+      }), ...scene.marks.map(({ key, label, point }) => ({ ...marker(key, point), label }))])
     }
     if (motions.size) scheduleDraw()
   }
@@ -231,12 +231,13 @@ export function mountGarage(
       const x = across * cs + depth * sn
       const z = depth * cs - across * sn
       const raised = 1.5 * ce / se
-      const place = sceneLocations.find(place => place.kind === 'bay'
-        ? Math.abs(x - place.x) <= 2.55 && z >= -3.53 && z <= 4.19
+      const place = locations.find(place => place.kind === 'bay'
+        ? Math.abs(x - place.x) <= 2.55 && z >= place.z - 3.53 && z <= place.z + 4.19
         : Math.abs(x - place.x) <= parkingWidth / 2 && Math.abs(z - place.z) <= parkingDepth / 2)
       if (place) return place
       return (Object.keys(desks) as DeskLocation[]).find(key => {
         const area = desks[key]
+        if (!area) return false
         return [0, raised].some(height => {
           const roomX = x + height * sn
           const roomZ = z + height * cs
@@ -247,7 +248,7 @@ export function mountGarage(
     update(bays: readonly Bay[], parking: readonly ParkingSpace[], arrivals: readonly ParkingSpace[],
       selected: MapLocation | null, targets: string[]) {
       const next = new Map<number, SceneLocation>()
-      for (const [index, place] of sceneLocations.entries()) {
+      for (const [index, place] of locations.entries()) {
         const entries = place.kind === 'bay' ? bays : place.kind === 'arrival' ? arrivals : parking
         const entry = entries.find(item => item.id === place.id)
         if (entry?.occupied) next.set(entry.request_id ?? -(index + 1), place)
@@ -260,7 +261,7 @@ export function mountGarage(
           if (!from || from === place) continue
           const queue = motions.get(id) ?? []
           const starts = Math.max(queue.at(-1)?.ends ?? now, now)
-          queue.push(createMotion(from, place, starts))
+          queue.push(createMotion(from, place, starts, scene.driveway))
           motions.set(id, queue)
         }
         for (const id of motions.keys()) if (!next.has(id)) motions.delete(id)

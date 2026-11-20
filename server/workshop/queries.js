@@ -7,7 +7,7 @@ technicalEvents.push('Внутреннее примечание о паузе', 
 const fullRequestAccess = role => role === 'advisor' || role === 'manager';
 const assignedTo = (user, row) => (row.transfer_mechanic_id ?? row.mechanic_id) === user.id && Boolean(row.bay_id || row.parking_space || row.status === 'paused');
 
-export function createWorkshopQueries({ all, get }, inventory, workTime) {
+export function createWorkshopQueries({ all, get }, inventory, workTime, layout) {
   const requestSelect = `SELECT r.id, r.vehicle_id, r.description, r.priority, r.preferred_date, r.appointment,
     r.status AS request_status, r.created_at, v.model, v.plate, v.vin, v.mileage, v.client_id,
     c.name AS client_name, c.phone AS client_phone, o.id AS order_id, o.status AS work_status,
@@ -167,6 +167,7 @@ export function createWorkshopQueries({ all, get }, inventory, workTime) {
       result.vehicles = all('SELECT id, model, plate, mileage FROM vehicles WHERE client_id=? ORDER BY id', user.id);
       return result;
     }
+    if (user.role !== 'stockkeeper') result.layout = layout.read();
     result.staff_presence = all(`SELECT a.id,a.name,a.role,p.status FROM accounts a
       LEFT JOIN staff_presence p ON p.account_id=a.id WHERE a.role IN ('advisor','stockkeeper') ORDER BY a.role,a.id`);
 
