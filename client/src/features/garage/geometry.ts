@@ -1,4 +1,5 @@
-import { desks, garagePosts, parkingAisle, parkingDepth, parkingEntrance, parkingLocations, parkingZones, siteBounds, workshopAisle } from './mapLayout';
+import { desks, garagePosts, parkingAisle, parkingDepth, parkingEntrance, parkingLocations, parkingZones,
+  siteBounds, workshop, workshopGate } from './mapLayout';
 
 export type Point = [number, number, number];
 export interface Face { points: Point[]; color: string; stroke: string | null; center: Point }
@@ -60,13 +61,27 @@ const wall = '#e1e5df';
 const trim = '#526570';
 
 function makeBuilding() {
-  const left = -10.4, back = -5.9, width = 20.8, depth = 11.3;
+  const { left, right, back, front } = workshop;
+  const width = right - left, depth = front - back;
   box(ground, left, -.25, back, width, .25, depth, '#9da7a5');
   flat(ground, left, .004, back, width, depth, concrete);
   for (const x of [-9.65, -3.02, 3.02, 9.65]) {
-    flat(ground, x, .007, back + .38, .042, depth - .39, concreteJoint);
+    flat(ground, x, .007, back + .38, .042, workshopGate.back - back - .38, concreteJoint);
   }
-  flat(ground, left + .38, .007, 4.85, width - .76, .032, concreteJoint);
+  flat(ground, left + .36, .008, workshopGate.back, width - .36, workshopGate.front - workshopGate.back, '#a4afae');
+  flat(ground, left + .38, .011, workshopGate.front - .08, width - .38, .08, '#e0e7e2');
+  flat(ground, left + .38, .011, workshopGate.back, width - .38, .08, '#e0e7e2');
+
+  const rightWall = right - .28;
+  box(fixtures, rightWall, 0, back + .44, .28, .83, workshopGate.back - back - .44, wall);
+  box(fixtures, rightWall, 0, workshopGate.front, .28, .83, front - workshopGate.front, wall);
+  box(fixtures, left, 0, front - .18, width, .20, .18, '#899993');
+  for (const z of [workshopGate.back - .28, workshopGate.front]) {
+    box(fixtures, right - .52, 0, z, .52, 2.88, .28, trim);
+    box(fixtures, right - .52, 0, z, .09, .65, .28, '#c19958');
+  }
+  box(fixtures, right - .53, 2.88, workshopGate.back - .28, .53, .24,
+    workshopGate.front - workshopGate.back + .56, trim);
 
   box(fixtures, -9.72, 0, -5.51, 19.44, 3.23, .43, wall);
   box(fixtures, -9.72, 0, -5.063, 19.44, .61, .038, '#788a8e');
@@ -176,9 +191,9 @@ function makeCar(mesh: Face[], x: number, y: number, z: number, color: string) {
 
 function makeSite() {
   const { left, right, back, front } = siteBounds;
-  const roadLeft = parkingEntrance - 1.25;
+  const roadLeft = parkingEntrance - 1.8;
   const roadRight = right - .18;
-  const forecourtBack = workshopAisle - .72;
+  const forecourtBack = workshop.front;
   const forecourtFront = parkingZones[2].z + parkingDepth / 2 + .36;
   const rearBack = parkingZones[0].z - parkingDepth / 2 - .36;
   const rearFront = parkingZones[1].z + parkingDepth / 2 + .36;
@@ -193,12 +208,15 @@ function makeSite() {
     [roadRight, 0, front - .18], [roadLeft, 0, front - .18],
     [roadLeft, 0, forecourtFront], [-8.24, 0, forecourtFront],
     [-8.24, 0, forecourtBack], [roadLeft, 0, forecourtBack],
+    [roadLeft, 0, workshopGate.front], [workshop.right, 0, workshopGate.front],
+    [workshop.right, 0, workshopGate.back], [roadLeft, 0, workshopGate.back],
     [roadLeft, 0, rearFront], [parkingLeft, 0, rearFront],
     [parkingLeft, 0, rearBack], [roadLeft, 0, rearBack],
   ], asphalt);
   flat(ground, roadRight - .23, .005, back + .19, .075, front - back - .38, '#dce1dd');
 
-  for (const [start, end] of [[back + 1.2, rearBack - .25], [rearFront + .65, forecourtBack - .5], [forecourtFront + .28, front - .3]]) {
+  for (const [start, end] of [[back + 1.2, rearBack - .25], [rearFront + .65, workshopGate.back - .4],
+    [forecourtFront + .28, front - .3]]) {
     if (end > start) flat(ground, roadLeft + .16, .005, start, .074, end - start, '#dce1dd');
   }
   for (const z of [rearBack, rearFront]) {
@@ -207,21 +225,7 @@ function makeSite() {
   flat(ground, -8.21, .006, forecourtFront - .09, roadLeft + 8.05, .09, '#dce1dd');
   flat(ground, parkingLeft + .15, .005, parkingAisle - .07, 1.5, .14, '#c3ccc6');
 
-  // A single rectangular pedestrian court meets the reception threshold and the vehicle apron.
-  const courtLeft = desks.reception.left;
-  const courtBack = desks.reception.front;
-  const courtRight = -8.24;
-  const courtFront = forecourtFront;
-  box(ground, courtLeft, -.17, courtBack, courtRight - courtLeft, .20, courtFront - courtBack, '#9b9e92');
-  flat(ground, courtLeft, .036, courtBack, courtRight - courtLeft, courtFront - courtBack, '#d7d6c9');
-  for (let x = courtLeft + 1.18; x < courtRight - .55; x += 1.18) {
-    flat(ground, x, .04, courtBack, .046, courtFront - courtBack, '#bfc0b4');
-  }
-  for (let z = courtBack + 1.18; z < courtFront - .55; z += 1.18) {
-    flat(ground, courtLeft, .041, z, courtRight - courtLeft, .046, '#bfc0b4');
-  }
-  flat(ground, courtRight - .12, .043, courtBack, .12, courtFront - courtBack, '#eeeae0');
-  box(ground, courtLeft + 1.8, .035, courtBack - .16, 3.45, .06, .36, '#a0ada8');
+  makeReceptionPaving();
 
   box(ground, -17.68, -.15, -23.62, 5.1, .17, 16.3, '#929e8a');
   flat(ground, -17.48, .025, -23.42, 4.7, 15.9, '#a4b49a');
@@ -229,6 +233,26 @@ function makeSite() {
     cylinder(fixtures, -15.2, .025, z, .13, 1.31, '#756b56', 'y');
     cylinder(fixtures, -15.2, 1.04, z, .76, 1.15, '#698a72', 'y');
     cylinder(fixtures, -15.26, 1.91, z, .53, .57, '#7c9a7d', 'y');
+  }
+}
+
+function makeReceptionPaving() {
+  const { left, right, front } = desks.reception;
+  const columns = 8, rows = 10;
+  const border = .14, joint = .072;
+  const width = right - left;
+  const unit = (width - border * 2) / columns;
+  const depth = unit * rows + border * 2;
+  const tileSize = unit - joint;
+  const colors = ['#dbd8cb', '#dfdccf', '#dddad0'];
+  box(ground, left, -.17, front, width, .20, depth, '#a3a499');
+  flat(ground, left, .035, front, width, depth, '#bcbfb3');
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const x = left + border + joint / 2 + column * unit;
+      const z = front + border + joint / 2 + row * unit;
+      flat(ground, x, .038, z, tileSize, tileSize, colors[(row * 7 + column * 5) % colors.length]);
+    }
   }
 }
 

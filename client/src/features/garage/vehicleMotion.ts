@@ -1,4 +1,4 @@
-import { parkingAisle, parkingEntrance, workshopAisle, type SceneLocation } from './mapLayout'
+import { arrivalAisle, parkingAisle, parkingEntrance, workshopAisle, type SceneLocation } from './mapLayout'
 
 type Position = Pick<SceneLocation, 'x' | 'z'>
 export interface VehiclePose extends Position { yaw: number; lift: number }
@@ -19,13 +19,13 @@ const between = (a: Position, b: Position, t: number) => ({ x: mix(a.x, b.x, t),
 const ease = (t: number) => t * t * (3 - 2 * t)
 const clamp = (t: number) => Math.max(0, Math.min(1, t))
 const angle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t
-const aisle = (place: SceneLocation) => place.kind === 'parking' ? parkingAisle : workshopAisle
+const aisles: Record<SceneLocation['kind'], number> = { bay: workshopAisle, parking: parkingAisle, arrival: arrivalAisle }
 
 export const restPose = (place: SceneLocation): VehiclePose => ({ ...place, lift: place.kind === 'bay' ? .67 : 0 })
 
 function travelPath(from: SceneLocation, to: SceneLocation) {
-  const fromAisle = aisle(from)
-  const toAisle = aisle(to)
+  const fromAisle = aisles[from.kind]
+  const toAisle = aisles[to.kind]
   const waypoints = [from, { x: from.x, z: fromAisle }]
   if (fromAisle !== toAisle) waypoints.push(
     { x: parkingEntrance, z: fromAisle }, { x: parkingEntrance, z: toAisle },
@@ -80,8 +80,8 @@ export function motionPose(motion: VehicleMotion, now: number): VehiclePose {
   const behind = positionAt(motion, travelled - .32)
   const heading = Math.atan2(ahead.x - behind.x, ahead.z - behind.z)
   const position = positionAt(motion, travelled)
-  const fromTurn = Math.abs(from.z - aisle(from)) + .85
-  const toTurn = Math.abs(to.z - aisle(to)) + .85
+  const fromTurn = Math.abs(from.z - aisles[from.kind]) + .85
+  const toTurn = Math.abs(to.z - aisles[to.kind]) + .85
   let yaw = heading
   if (from.kind !== 'bay') yaw = angle(from.yaw, yaw, ease(clamp((travelled - fromTurn + 1.65) / 1.65)))
   if (to.kind === 'bay') yaw = angle(to.yaw, yaw, ease(clamp((length - travelled - toTurn + 1.65) / 1.65)))

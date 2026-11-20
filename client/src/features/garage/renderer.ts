@@ -186,7 +186,7 @@ export function mountGarage(
         const nearWorkshop = place.kind === 'parking' && place.id > spacesPerRow
         const z = place.kind === 'bay' ? 4.4 : place.z + (nearWorkshop ? -.6 : 2.12)
         return marker(place, [place.x, .02, z])
-      }), marker('warehouse', [-14.2, .3, -.7]), marker('reception', [-14.2, .3, 5.35]),
+      }), marker('warehouse', [-13.7, 1.1, -2.5]), marker('reception', [-14.2, .3, 5.35]),
       ...parkingZones.map(zone => marker(zone.key, [.78, .55, zone.z - 3.05]))])
     }
     if (motions.size) scheduleDraw()
