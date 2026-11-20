@@ -48,4 +48,7 @@ const server = createServer(async (req, res) => {
     return response(res, error.status || 500, { error: error.status ? error.message : 'Ошибка сервера. Повторите попытку.' });
   }
 });
-server.listen(port, '127.0.0.1', () => console.log(`Мастерская: http://127.0.0.1:${port}/`));
+server.listen(port, '127.0.0.1', () => {
+  console.log(`Мастерская: http://127.0.0.1:${port}/`);
+  process.send?.('ready');
+});

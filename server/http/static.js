@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { fail } from './json.js';
 
-const dist = new URL('../../dist/', import.meta.url);
+const dist = process.env.WORKSHOP_FRONTEND_DIR || fileURLToPath(new URL('../../dist/', import.meta.url));
 const assetTypes = { js: 'text/javascript', css: 'text/css' };
 
 function staticFile(path) {
@@ -16,7 +18,7 @@ export function serveFrontend(path, res) {
   const [file, mime] = page;
   let content;
   try {
-    content = readFileSync(new URL(file, dist));
+    content = readFileSync(join(dist, file));
   } catch (error) {
     if (error.code === 'ENOENT') fail(404, 'Файл приложения не найден. Запустите npm start.');
     throw error;
