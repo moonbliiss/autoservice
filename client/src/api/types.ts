@@ -4,14 +4,15 @@ export type Status =
   | 'new' | 'scheduled' | 'cancelled' | 'received'
   | 'diagnosis_assigned' | 'diagnosing' | 'awaiting_estimate' | 'awaiting_approval'
   | 'declined' | 'approved' | 'repair_assigned' | 'repairing' | 'paused'
-  | 'waiting_parts' | 'inspection' | 'ready' | 'issued'
+  | 'waiting_parts' | 'transfer_pending' | 'inspection' | 'ready' | 'issued'
 export type RequestAction =
   | 'schedule' | 'cancel' | 'receive' | 'diagnose' | 'startDiagnosis' | 'diagnosisReport'
   | 'estimate' | 'approve' | 'decline' | 'assign' | 'startRepair' | 'pause' | 'resume'
   | 'repairReport' | 'ready' | 'rework' | 'release' | 'returnCar' | 'payment' | 'issue'
   | 'recordDecision' | 'moveBay' | 'park'
+  | 'dispatchTransfer' | 'completeTransfer' | 'cancelTransfer'
 export type PaymentMethod = 'cash' | 'card' | 'transfer'
-export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose'>
+export type RoutingAction = Extract<RequestAction, 'park' | 'moveBay' | 'assign' | 'diagnose' | 'dispatchTransfer'>
 
 export interface RequestSummary {
   id: number
@@ -26,6 +27,7 @@ export interface RequestSummary {
   assigned_to_me?: boolean
   client_name?: string
   routing_actions?: RoutingAction[]
+  transfer?: { id: number; bay_id: number; bay_name: string; mechanic_id: number; mechanic_name: string; instructions: string }
 }
 
 export interface EstimateLine {
@@ -79,6 +81,9 @@ export interface Bay {
   model: string | null
   mechanic: string | null
   occupied: boolean
+  reserved: boolean
+  reserved_request_id?: number | null
+  reserved_mechanic_id?: number | null
 }
 
 export interface ParkingSpace {

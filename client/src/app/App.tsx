@@ -15,7 +15,7 @@ export function App() {
   const {
     dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction, formError, notice, busy, submitting,
-    changeProfile, navigate, openRequest, showAction, submitAction, moveOnMap,
+    changeProfile, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
   } = useWorkshop()
   const onNewRequest = (vehicleId?: number) => showAction({ key: 'newRequest', vehicleId })
 
@@ -25,14 +25,16 @@ export function App() {
       {!dashboard ? <p>{busy ? 'Загрузка мастерской…'
         : 'Не удалось подключиться к мастерской. Проверьте запуск сервера и обновите страницу.'}</p>
         : detail ? <RequestDetails row={detail} role={dashboard.user.role}
-          onAction={key => showAction({ key, row: detail })} onBack={() => navigate(section)} />
+          onAction={key => showAction({ key, row: detail })} onBack={() => navigate(section)}
+          onCompleteTransfer={completeTransfer} submitting={submitting} />
         : section === 'overview' ? (dashboard.user.role === 'stockkeeper'
           ? <WarehouseDesk needs={dashboard.warehouse_needs ?? []}
             onIssue={need => showAction({ key: 'warehouseIssue', need })}
             onOrder={need => showAction({ key: 'orderSupply', requestId: need.request_id, partId: need.part_id,
               quantity: need.required - need.issued - need.stock - need.incoming })} />
           : <Overview dashboard={dashboard} onMove={moveOnMap} onOpen={openRequest}
-            onNewRequest={onNewRequest} onRequests={() => navigate('requests')} onStock={() => navigate('stock')} />)
+            onNewRequest={onNewRequest} onRequests={() => navigate('requests')} onStock={() => navigate('stock')}
+            onCompleteTransfer={completeTransfer} submitting={submitting} />)
         : section === 'requests' ? <RequestList dashboard={dashboard} onOpen={openRequest} search={search}
           onSearch={setSearch} filter={filter} onFilter={setFilter} onNewRequest={onNewRequest} />
         : section === 'stock' ? <StockView dashboard={dashboard} onRestock={() => showAction({ key: 'restock' })}

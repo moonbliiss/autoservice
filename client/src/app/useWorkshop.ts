@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, createRequest, errorMessage, getDashboard, getRequest, issueStock, orderSupply, receiveSupply, restock, selectProfile, updateRequest } from '../api/client'
-import type { Dashboard, Profile, RequestDetail, RoutingAction, Submission } from '../api/types'
+import type { Dashboard, Profile, RequestDetail, RequestSummary, RoutingAction, Submission } from '../api/types'
 import type { FormAction } from '../features/actions/ActionFields'
 import type { MapLocation } from '../features/garage/mapLayout'
 import { profileKey, type Section } from './navigation'
@@ -90,6 +90,7 @@ export function useWorkshop() {
   }
 
   const userId = dashboard?.user.id
+  const liveWorkshop = section === 'overview' && ['advisor', 'manager', 'mechanic'].includes(dashboard?.user.role ?? '')
   const demoProfile = profileKey(dashboard?.user)
   const detailId = detail?.id
   useEffect(() => {
@@ -128,12 +129,12 @@ export function useWorkshop() {
         refreshing = false
       }
     }
-    const timer = window.setInterval(refresh, 12000)
+    const timer = window.setInterval(refresh, liveWorkshop ? 2000 : 12000)
     return () => {
       active = false
       window.clearInterval(timer)
     }
-  }, [userId, demoProfile, detailId, section, action, busy, submitting])
+  }, [userId, demoProfile, detailId, section, action, busy, submitting, liveWorkshop])
 
   function navigate(next: Section) {
     if (locked.current) return
@@ -205,6 +206,25 @@ export function useWorkshop() {
     }
   }
 
+  async function completeTransfer(row: RequestSummary) {
+    if (locked.current || !row.transfer) return
+    ++revision.current
+    locked.current = true
+    setSubmitting(true)
+    // Mount the map with the current parking position before fetching the confirmed position.
+    setSection('overview')
+    setDetail(null)
+    try {
+      await updateRequest(row.id, 'completeTransfer', { transfer_id: row.transfer.id })
+      await refreshDashboard(`Перегон подтверждён. Автомобиль на посту ${row.transfer.bay_id}.`)
+    } catch (error) {
+      await refreshDashboard(errorMessage(error), true)
+    } finally {
+      locked.current = false
+      setSubmitting(false)
+    }
+  }
+
   async function submitAction(data: Submission) {
     if (!action || locked.current) return
     ++revision.current
@@ -232,6 +252,7 @@ export function useWorkshop() {
     const message = key === 'newRequest' ? 'Заявка отправлена.' : key === 'estimate' ? 'Смета отправлена клиенту.'
       : key === 'orderSupply' ? 'Заказ поставщику добавлен в поставки.'
       : key === 'receiveSupply' ? 'Запчасти оприходованы на склад.'
+      : key === 'dispatchTransfer' ? 'Задача перегона назначена. Автомобиль пока на парковке.'
       : key === 'warehouseIssue' ? 'Запчасти выданы механику и списаны со склада.' : 'Изменения сохранены.'
     try {
       await refreshDashboard(message)
@@ -244,6 +265,6 @@ export function useWorkshop() {
   return {
     dashboard, section, detail, search, setSearch, filter, setFilter,
     action, closeAction: () => setAction(null), formError, notice, busy, submitting,
-    changeProfile, navigate, openRequest, showAction, submitAction, moveOnMap,
+    changeProfile, navigate, openRequest, showAction, submitAction, moveOnMap, completeTransfer,
   }
 }

@@ -8,6 +8,9 @@ function submissionFor(action: FormAction, form: HTMLFormElement): Submission {
   const fields = new FormData(form)
   if (action.key === 'newRequest' && fields.get('vehicle_id') === 'new') fields.delete('vehicle_id')
   const data: Submission = Object.fromEntries(fields)
+  if ((action.key === 'dispatchTransfer' || action.key === 'cancelTransfer') && action.row.transfer) {
+    data.transfer_id = action.row.transfer.id
+  }
   if (action.key === 'estimate' || action.key === 'approve' || action.key === 'decline' || action.key === 'recordDecision') {
     data.version = action.row.estimate_version
   }

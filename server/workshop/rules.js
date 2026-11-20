@@ -9,7 +9,10 @@ export const transitions = {
   approve: ['client', ['awaiting_approval'], 'Смета согласована'],
   decline: ['client', ['awaiting_approval'], 'Клиент отклонил смету'],
   recordDecision: ['advisor', ['awaiting_approval'], 'Приёмщик зафиксировал ответ клиента'],
-  assign: ['advisor', ['approved', 'repair_assigned', 'paused', 'waiting_parts'], 'Назначены работы'],
+  assign: ['advisor', ['approved', 'repair_assigned', 'paused'], 'Назначены работы'],
+  dispatchTransfer: ['advisor manager', ['waiting_parts', 'transfer_pending'], 'Назначен перегон в цех'],
+  cancelTransfer: ['advisor manager', ['transfer_pending'], 'Перегон отменён'],
+  completeTransfer: ['mechanic', ['transfer_pending'], 'Механик подтвердил перегон в цех'],
   moveBay: ['advisor', ['diagnosing', 'repairing', 'inspection'], 'Изменён пост или исполнитель'],
   park: ['advisor', ['diagnosis_assigned', 'diagnosing', 'approved', 'repair_assigned', 'repairing', 'paused', 'inspection', 'waiting_parts'], 'Автомобиль на парковке · ожидание запчастей'],
   startRepair: ['mechanic', ['repair_assigned'], 'Ремонт начат'],
@@ -25,7 +28,7 @@ export const transitions = {
 };
 
 export function availableActions(user, row) {
-  if (user.role === 'mechanic' && row.mechanic_id !== user.id) return [];
+  if (user.role === 'mechanic' && (row.transfer_mechanic_id ?? row.mechanic_id) !== user.id) return [];
   return Object.entries(transitions).filter(([key, [roles, states]]) => {
     if (!roles.split(' ').includes(user.role) || !states.includes(row.status)) return false;
     if (key === 'payment') return row.total > row.paid;
@@ -35,6 +38,9 @@ export function availableActions(user, row) {
   }).map(([key]) => key);
 }
 
-export function routingActions(status) {
-  return ['park', 'moveBay', 'assign', 'diagnose'].filter(key => transitions[key][1].includes(status));
+export function routingActions(role, status) {
+  return ['park', 'moveBay', 'assign', 'diagnose', 'dispatchTransfer'].filter(key => {
+    const [roles, states] = transitions[key];
+    return roles.split(' ').includes(role) && states.includes(status);
+  });
 }

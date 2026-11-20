@@ -37,6 +37,7 @@
 }
 .parking-marker { min-width: 24px; padding: 2px 4px; font-size: .74rem; font-variant-numeric: tabular-nums; }
 .warehouse-marker { background: #e5f0e6; border-color: #7d9b86; }
+.marker[data-reserved="true"] { background: #e5eaf6; border-color: #7891b5; }
 .marker[data-occupied="true"] { background: #f3e7cb; border-color: #c3a575; }
 .marker[data-target="true"] { background: #e4f4e6; border-color: #6e9c7b; color: #214d32; }
 .marker[aria-pressed="true"] { background: #304638; border-color: #304638; color: #fffdf7; z-index: 1; }

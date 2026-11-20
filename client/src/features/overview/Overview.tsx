@@ -1,12 +1,14 @@
-import type { Dashboard } from '../../api/types'
+import type { Dashboard, RequestSummary } from '../../api/types'
 import { Button, Heading, Metrics, Panel } from '../../shared/ui'
 import { StatusTag, closedStatuses, workshopStatuses } from '../requests/status'
 import { RequestTable, type OpenRequest } from '../requests/RequestTable'
 import { WorkshopFloor, type MoveRequest } from '../garage/WorkshopFloor'
+import { TransferTask } from '../requests/TransferTask'
 import './overview.css'
 
-export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, onStock }: {
-  dashboard: Dashboard; onOpen: OpenRequest; onNewRequest: () => void; onRequests: () => void; onMove: MoveRequest; onStock: () => void
+export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, onStock, onCompleteTransfer, submitting }: {
+  dashboard: Dashboard; onOpen: OpenRequest; onNewRequest: () => void; onRequests: () => void; onMove: MoveRequest; onStock: () => void;
+  onCompleteTransfer: (row: RequestSummary) => void; submitting: boolean
 }) {
   const { requests, user: { role }, bays = [] } = dashboard
   const ready = requests.filter(row => row.status === 'ready').length
@@ -22,10 +24,12 @@ export function Overview({ dashboard, onMove, onOpen, onNewRequest, onRequests, 
   const floor = <WorkshopFloor key={dashboard.user.id} dashboard={dashboard} onOpen={onOpen} onMove={onMove}
     onOpenStock={role === 'advisor' || role === 'manager' ? onStock : undefined} />
   if (role === 'mechanic') {
+    const transfer = requests.find(row => row.transfer && row.assigned_to_me)
     const active = requests.find(row => row.status !== 'paused' && workshopStatuses.has(row.status) && row.bay_id && row.assigned_to_me)
     return <>
       <Heading title="Моя смена" subtitle="Текущий пост, задача и результаты работы." eyebrow="КАБИНЕТ МЕХАНИКА" />
-      {active ? <Panel inset title={`Ваш пост ${String(active.bay_id).padStart(2, '0')} · ${bays.find(bay => bay.id === active.bay_id)?.name ?? ''}`}>
+      {transfer ? <TransferTask row={transfer} busy={submitting} onComplete={() => onCompleteTransfer(transfer)} />
+        : active ? <Panel inset title={`Ваш пост ${String(active.bay_id).padStart(2, '0')} · ${bays.find(bay => bay.id === active.bay_id)?.name ?? ''}`}>
         <div className="split"><div><strong>{active.model}</strong><p className="muted">{active.plate}</p></div><StatusTag status={active.status} /></div>
         <div className="actions"><Button variant="primary" onClick={() => onOpen(active.id)}>Открыть задачу</Button></div>
       </Panel> : <Panel inset title="Текущий пост"><p className="muted">Активного назначения пока нет.</p></Panel>}

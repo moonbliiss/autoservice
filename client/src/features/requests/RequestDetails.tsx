@@ -3,12 +3,13 @@ import { code, dateOnly, dateTime, money, number } from '../../shared/format'
 import { actionLabels, paymentLabels } from '../../shared/labels'
 import { Button, Heading, Panel } from '../../shared/ui'
 import { ParkingStatus } from './ParkingStatus'
+import { TransferTask } from './TransferTask'
 import { StatusTag } from './status'
 import './request-details.css'
 
 const actionOrder: RequestAction[] = [
   'receive', 'schedule', 'cancel', 'diagnose', 'startDiagnosis', 'diagnosisReport', 'estimate',
-  'approve', 'decline', 'recordDecision', 'assign', 'startRepair', 'resume', 'repairReport', 'park', 'moveBay',
+  'approve', 'decline', 'recordDecision', 'dispatchTransfer', 'cancelTransfer', 'assign', 'startRepair', 'resume', 'repairReport', 'park', 'moveBay',
   'pause', 'release', 'ready', 'rework', 'returnCar', 'payment', 'issue',
 ]
 
@@ -53,14 +54,15 @@ function actionTitle(action: RequestAction, row: RequestDetail) {
   if (action === 'schedule' && row.appointment) return 'Перенести визит'
   if (action === 'estimate' && row.estimate_version) return 'Пересмотреть смету'
   if (action === 'assign' && row.status === 'repair_assigned') return 'Изменить назначение'
-  if (action === 'assign' && row.status === 'waiting_parts') return 'Вернуть с парковки в цех'
+  if (action === 'dispatchTransfer' && row.transfer) return 'Изменить назначение перегона'
   if (action === 'diagnose' && row.status === 'diagnosis_assigned') return 'Изменить назначение диагностики'
   if (action === 'park' && row.parking_space) return 'Изменить место или срок поставки'
   return actionLabels[action]
 }
 
-export function RequestDetails({ row, role, onAction, onBack }: {
-  row: RequestDetail; role: Role; onAction: (action: RequestAction) => void; onBack: () => void
+export function RequestDetails({ row, role, onAction, onBack, onCompleteTransfer, submitting }: {
+  row: RequestDetail; role: Role; onAction: (action: RequestAction) => void; onBack: () => void;
+  onCompleteTransfer: (row: RequestDetail) => void; submitting: boolean
 }) {
   const actions = actionOrder.filter(key => row.actions.includes(key))
   const facts = [
@@ -82,6 +84,8 @@ export function RequestDetails({ row, role, onAction, onBack }: {
       action={<StatusTag status={row.status} />} />
     <div className="detail-grid">
       <div className="column">
+        <TransferTask row={row} busy={submitting}
+          onComplete={row.actions.includes('completeTransfer') ? () => onCompleteTransfer(row) : undefined} />
         <ParkingStatus {...row} />
         {role === 'client' && row.visit_note && <Panel inset title="Информация о визите"><p>{row.visit_note}</p></Panel>}
         {row.work_instructions && role !== 'client' && <Panel inset title={row.bay_id ? `Пост ${row.bay_id} · ${row.bay_name}` : 'Последнее задание'}>

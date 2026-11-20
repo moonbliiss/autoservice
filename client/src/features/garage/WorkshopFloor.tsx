@@ -31,7 +31,8 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock }: {
   const request = dashboard.requests.find(item => item.id === requestId && item.id === selection?.requestId)
   const selectedBay = bays.find(bay => selected?.place.kind === 'bay' && bay.id === selected.place.id)
   const actions = request?.routing_actions ?? []
-  const targets = actions.length ? entries.filter(entry => !entry.vehicle?.occupied && moveAction(actions, entry.place))
+  const targets = actions.length ? entries.filter(entry => !entry.vehicle?.occupied && moveAction(actions, entry.place)
+    && (entry.place.kind !== 'bay' || !bays.find(bay => bay.id === entry.place.id)?.reserved))
     .map(entry => locationKey(entry.place)) : []
 
   function selectPlace(place: MapLocation) {
@@ -63,7 +64,9 @@ export function WorkshopFloor({ dashboard, onOpen, onMove, onOpenStock }: {
           <span className="muted">{request.plate} · {code(request.id)}</span>
           <StatusTag status={request.status} />
           {selectedBay?.mechanic && <span className="muted">{selectedBay.mechanic}</span>}
-        </button> : selected && <p className="muted">{selected.vehicle?.model ?? (selected.vehicle?.occupied ? 'Занято' : 'Свободно')}</p>}
+        </button> : selected && <p className="muted">{selected.vehicle?.model ?? (
+          selected.vehicle?.occupied ? 'Занято' : selectedBay?.reserved ? 'Зарезервировано для перегона' : 'Свободно')}</p>}
+        {request?.transfer && <p className="muted">Назначен перегон на пост {request.transfer.bay_id}. Механик: {request.transfer.mechanic_name}.</p>}
         {(!selected || targets.length > 0) && <p className="muted">
           {targets.length > 0 ? 'Выберите подсвеченное свободное место на карте.' : 'Нажмите на машину, пост или парковочное место.'}
         </p>}

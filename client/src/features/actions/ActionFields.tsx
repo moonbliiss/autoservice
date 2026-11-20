@@ -33,17 +33,19 @@ function NewRequestFields({ vehicles = [], vehicleId }: { vehicles: Dashboard['v
 
 function AssignmentFields({ dashboard, row, bayId }: { dashboard: Dashboard; row: RequestDetail; bayId?: number }) {
   const bays = dashboard.bays ?? []
-  const usedBays = bays.filter(bay => bay.status && bay.request_id !== row.id)
-  const usedMechanics = new Set(usedBays.filter(bay => bay.status !== 'paused').map(bay => bay.mechanic_id))
-  const free = bays.filter(bay => !usedBays.includes(bay))
+  const usedBays = bays.filter(bay => bay.occupied && bay.request_id !== row.id)
+  const reservations = bays.filter(bay => bay.reserved && bay.reserved_request_id !== row.id)
+  const usedMechanics = new Set([...usedBays.filter(bay => bay.status !== 'paused').map(bay => bay.mechanic_id),
+    ...reservations.map(bay => bay.reserved_mechanic_id)])
+  const free = bays.filter(bay => !usedBays.includes(bay) && !reservations.includes(bay))
   const workers = (dashboard.mechanics ?? []).filter(person => !usedMechanics.has(person.id))
   return <>
     {(!free.length || !workers.length) && <p className="muted">Для назначения нужен свободный пост и механик.</p>}
-    <SelectField label="Пост" name="bay_id" defaultValue={bayId ?? row.bay_id ?? ''}
+    <SelectField label="Пост" name="bay_id" defaultValue={bayId ?? row.transfer?.bay_id ?? row.bay_id ?? ''}
       options={[['', 'Выберите пост'], ...free.map((bay): Option => [bay.id, `Пост ${bay.id} · ${bay.name}`])]} />
-    <SelectField label="Механик" name="mechanic_id" defaultValue={row.mechanic_id ?? ''}
+    <SelectField label="Механик" name="mechanic_id" defaultValue={row.transfer?.mechanic_id ?? row.mechanic_id ?? ''}
       options={[['', 'Выберите механика'], ...workers.map((person): Option => [person.id, person.name])]} />
-    <TextField label="Задача и ожидаемый результат" name="instructions" defaultValue={row.work_instructions ?? ''} />
+    <TextField label="Задача и ожидаемый результат" name="instructions" defaultValue={row.transfer?.instructions ?? row.work_instructions ?? ''} />
   </>
 }
 
@@ -82,6 +84,11 @@ export function ActionFields({ action, dashboard }: { action: FormAction; dashbo
     case 'diagnose':
     case 'moveBay':
     case 'assign': return <AssignmentFields dashboard={dashboard} row={row} bayId={action.destination?.id} />
+    case 'dispatchTransfer': return <>
+      <p>Механик получит задачу забрать автомобиль с парковки. Пост будет зарезервирован до подтверждения перегона.</p>
+      <AssignmentFields dashboard={dashboard} row={row} bayId={action.destination?.id} />
+    </>
+    case 'cancelTransfer': return <p>Автомобиль останется на месте {row.parking_space}. Резерв поста и назначение механика будут сняты.</p>
     case 'park': {
       const spaces = (dashboard.parking ?? []).filter(space => !space.request_id || space.request_id === row.id)
       return <>

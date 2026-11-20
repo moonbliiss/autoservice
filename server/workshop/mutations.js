@@ -55,7 +55,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     run(`UPDATE orders SET ${columns.join(',')} WHERE id=?`, ...Object.values(changes), row.order_id);
   }
 
-  function assignOrder(row, input, status) {
+  function checkAssignment(row, input) {
     const mechanicId = integer(input.mechanic_id, 'Механик');
     const bayId = integer(input.bay_id, 'Пост');
     requireValue(account(mechanicId)?.role === 'mechanic', 'Выберите механика из списка.');
@@ -64,10 +64,24 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
     requireValue(!get('SELECT 1 FROM orders WHERE bay_id=? AND id<>?', bayId, row.order_id), 'Этот пост уже занят.', 409);
     requireValue(!get("SELECT 1 FROM orders WHERE mechanic_id=? AND bay_id IS NOT NULL AND status <> 'paused' AND id<>?", mechanicId, row.order_id),
       'Механик уже работает на другом посту.', 409);
+    requireValue(!get('SELECT 1 FROM parking_transfers WHERE bay_id=? AND order_id<>?', bayId, row.order_id),
+      'Этот пост зарезервирован для перегона.', 409);
+    requireValue(!get('SELECT 1 FROM parking_transfers WHERE mechanic_id=? AND order_id<>?', mechanicId, row.order_id),
+      'У механика уже есть задача перегнать автомобиль.', 409);
+    return { mechanicId, bayId, bayName: bay.name };
+  }
+
+  function assignOrder(row, input, status) {
+    const { mechanicId, bayId, bayName } = checkAssignment(row, input);
     updateOrder(row, status, { mechanic_id: mechanicId, bay_id: bayId,
       work_instructions: str(input.instructions, 'Задача и ожидаемый результат'), pause_reason: null });
     if (row.parking_space) run('DELETE FROM parking_assignments WHERE order_id=?', row.order_id);
-    return `Пост ${bayId} · ${bay.name}.`;
+    return `Пост ${bayId} · ${bayName}.`;
+  }
+
+  function checkTransferVersion(row, input) {
+    const id = input.transfer_id == null ? null : integer(input.transfer_id, 'Задача перегона');
+    requireValue(id === row.transfer_id, 'Назначение изменилось. Откройте задачу заново.', 409);
   }
 
   function parkOrder(row, input) {
@@ -119,7 +133,9 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
 
   function action(user, id, key, input) {
     return transaction(() => {
-      requireValue(['advisor', 'mechanic', 'client'].includes(user.role), 'Изменять заявки из этого кабинета нельзя.', 403);
+      requireValue(['advisor', 'mechanic', 'client'].includes(user.role)
+        || user.role === 'manager' && ['dispatchTransfer', 'cancelTransfer'].includes(key),
+      'Изменять заявки из этого кабинета нельзя.', 403);
       const row = getRequest(id);
       requireValue(permitted(user, row), 'Заявка не найдена.', 404);
       if (key === 'resume' && row.status === 'paused' && user.role === 'mechanic' && row.mechanic_id === user.id && row.bay_id) {
@@ -174,13 +190,28 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           updateOrder(row, decision === 'approve' ? 'approved' : 'declined');
           break;
         }
-        case 'assign': {
+        case 'assign': note = assignOrder(row, input, 'repair_assigned'); break;
+        case 'dispatchTransfer': {
+          checkTransferVersion(row, input);
+          const { mechanicId, bayId, bayName } = checkAssignment(row, input);
+          const instructions = str(input.instructions, 'Задача после перегона');
+          run('DELETE FROM parking_transfers WHERE order_id=?', row.order_id);
+          run('INSERT INTO parking_transfers(order_id,bay_id,mechanic_id,instructions) VALUES (?,?,?,?)',
+            row.order_id, bayId, mechanicId, instructions);
+          note = `Парковка · место ${row.parking_space} → пост ${bayId} · ${bayName}.`;
+          break;
+        }
+        case 'cancelTransfer':
+          checkTransferVersion(row, input);
+          run('DELETE FROM parking_transfers WHERE order_id=?', row.order_id);
+          break;
+        case 'completeTransfer': {
+          checkTransferVersion(row, input);
           let stage = 'repair_assigned';
-          if (row.status === 'waiting_parts') {
-            if (['diagnosis_assigned', 'diagnosing'].includes(row.work_status)) stage = 'diagnosis_assigned';
-            if (row.work_status === 'inspection') stage = 'inspection';
-          }
-          note = assignOrder(row, input, stage);
+          if (['diagnosis_assigned', 'diagnosing'].includes(row.work_status)) stage = 'diagnosis_assigned';
+          if (row.work_status === 'inspection') stage = 'inspection';
+          note = assignOrder(row, { mechanic_id: row.transfer_mechanic_id, bay_id: row.transfer_bay_id,
+            instructions: row.transfer_instructions }, stage);
           break;
         }
         case 'moveBay': {
@@ -233,7 +264,7 @@ export function createWorkshopMutations({ run, get, transaction }, queries, acco
           updateOrder(row, 'issued', { bay_id: null });
           break;
       }
-      addHistory(id, user, transitions[key][2], note, key === 'release' ? 0 : 1);
+      addHistory(id, user, transitions[key][2], note, ['release', 'dispatchTransfer', 'cancelTransfer'].includes(key) ? 0 : 1);
       return details(user, id);
     });
   }

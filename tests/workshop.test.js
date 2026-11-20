@@ -158,7 +158,8 @@ test('приёмщик оформляет очный визит, распред�
   assert.equal(workshop.tracking(order.tracking_token).parking_space, 1);
   workshop.action(advisor, order.id, 'park', { ...park, parking_space: 2 });
   assert.equal(workshop.dashboard(advisor).parking[0].request_id, null);
-  const returned = workshop.action(advisor, order.id, 'assign', assign(3, 'Продолжить замену дисков'));
+  const task = workshop.action(advisor, order.id, 'dispatchTransfer', assign(3, 'Продолжить замену дисков'));
+  const returned = workshop.action(mechanic, order.id, 'completeTransfer', { transfer_id: task.transfer.id });
   assert.equal(returned.status, 'repair_assigned');
   assert.equal(returned.parking_space, null);
   assert.equal(workshop.dashboard(advisor).parking[1].request_id, null);
@@ -261,7 +262,9 @@ test('детали проходят через заказ поставщику, 
   assert.throws(() => workshop.receiveSupply(stockkeeper, supplyId, { quantity: 3 }), { status: 409 });
   assert.equal(stock(padsId), 1);
 
-  step(advisor, 'assign', assignment);
+  const transfer = step(advisor, 'dispatchTransfer', assignment);
+  assert.throws(() => workshop.issueParts(stockkeeper, pads), { status: 409 });
+  step(mechanic, 'completeTransfer', { transfer_id: transfer.transfer.id });
   step(mechanic, 'startRepair');
   assert.throws(() => workshop.issueParts(stockkeeper, oil), /превышает/);
   assert.equal(stock(padsId), 1);
@@ -291,9 +294,10 @@ test('машина переезжает на парковку из диагно�
   const parked = workshop.action(advisor, request.id, 'park', { parking_space: 6 });
   assert.equal(parked.status, 'waiting_parts');
   assert.equal(parked.bay_id, null);
-  const returned = workshop.action(advisor, request.id, 'assign', {
+  const task = workshop.action(advisor, request.id, 'dispatchTransfer', {
     bay_id: 1, mechanic_id: mechanic.id, instructions: 'Продолжить диагностику',
   });
+  const returned = workshop.action(mechanic, request.id, 'completeTransfer', { transfer_id: task.transfer.id });
   assert.equal(returned.status, 'diagnosis_assigned');
   assert.equal(returned.parking_space, null);
 });
@@ -354,4 +358,50 @@ test('кабинеты ограничивают и просмотр данных
 
   assert.equal(workshop.dashboard(customer).parts, undefined);
   assert.throws(() => workshop.details(customer, 2), { status: 404 });
+});
+
+test('перегон резервирует пост, а только назначенный механик подтверждает физический переезд', t => {
+  const workshop = openWorkshop(':memory:');
+  t.after(() => workshop.close());
+  const advisor = workshop.profile('advisor');
+  const manager = workshop.profile('manager');
+  const mechanic = workshop.profile('mechanic');
+  const other = workshop.profile('mechanic2');
+  const client = workshop.profile('client2');
+  const assignment = { bay_id: 3, mechanic_id: mechanic.id, instructions: 'Продолжить ремонт' };
+
+  workshop.action(advisor, 1, 'park', { parking_space: 5 });
+  workshop.action(advisor, 2, 'park', { parking_space: 4 });
+  workshop.action(advisor, 3, 'receive', { mileage: 62000 });
+  const pending = workshop.action(manager, 2, 'dispatchTransfer', assignment);
+  const pendingBy = workshop.dashboard(mechanic).requests.find(row => row.id === 2);
+  assert.equal(pendingBy.transfer.id, pending.transfer.id);
+  assert.equal(pending.parking_space, 4);
+  assert.equal(pending.bay_id, null);
+  assert.equal(workshop.details(client, 2).status, 'transfer_pending');
+  assert.equal(workshop.details(client, 2).transfer, undefined);
+  const bay = () => workshop.dashboard(advisor).bays.find(row => row.id === 3);
+  assert.equal(bay().occupied, false);
+  assert.equal(bay().reserved, true);
+  assert.equal(workshop.dashboard(advisor).parking.find(row => row.id === 4).request_id, 2);
+  assert.deepEqual(workshop.details(mechanic, 2).actions, ['completeTransfer']);
+  assert.throws(() => workshop.action(other, 2, 'completeTransfer', { transfer_id: pending.transfer.id }), { status: 404 });
+  assert.throws(() => workshop.action(manager, 2, 'completeTransfer', { transfer_id: pending.transfer.id }), { status: 403 });
+  assert.throws(() => workshop.action(mechanic, 2, 'startRepair', {}), { status: 409 });
+  assert.throws(() => workshop.action(advisor, 3, 'diagnose', { ...assignment, mechanic_id: other.id }), /зарезервирован/);
+  assert.throws(() => workshop.action(advisor, 3, 'diagnose', { ...assignment, bay_id: 1 }), /задача перегнать/);
+
+  workshop.action(advisor, 2, 'cancelTransfer', { transfer_id: pending.transfer.id });
+  assert.equal(bay().reserved, false);
+  assert.equal(workshop.details(client, 2).status, 'waiting_parts');
+  const next = workshop.action(advisor, 2, 'dispatchTransfer', assignment);
+  assert.throws(() => workshop.action(mechanic, 2, 'completeTransfer', { transfer_id: pending.transfer.id }), /изменилось/);
+  const arrived = workshop.action(mechanic, 2, 'completeTransfer', { transfer_id: next.transfer.id });
+  assert.equal(arrived.status, 'repair_assigned');
+  assert.equal(arrived.bay_id, 3);
+  assert.equal(arrived.parking_space, null);
+  assert.equal(bay().reserved, false);
+  assert.equal(bay().request_id, 2);
+  assert.equal(workshop.dashboard(advisor).parking.find(row => row.id === 4).request_id, null);
+  assert.throws(() => workshop.action(mechanic, 2, 'completeTransfer', { transfer_id: next.transfer.id }), { status: 409 });
 });

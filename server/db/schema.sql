@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS parking_assignments (
   expected_date TEXT
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS parking_transfers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL UNIQUE REFERENCES parking_assignments(order_id) ON DELETE CASCADE,
+  bay_id INTEGER NOT NULL UNIQUE REFERENCES bays(id),
+  mechanic_id INTEGER NOT NULL UNIQUE REFERENCES accounts(id),
+  instructions TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS services (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
